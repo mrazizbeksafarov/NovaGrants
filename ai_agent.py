@@ -49,22 +49,36 @@ Talablar:
         system_instruction=system_instruction,
     )
     
-    try:
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=prompt,
-            config=config
-        )
-        result = response.text.strip()
-        if result:
-            print("AI muvaffaqiyatli javob qaytardi.")
-            return result
-        else:
-            print("AI bo'sh javob qaytardi — Fallback rejimiga o'tildi.")
-            return _fallback_format(grants_list)
-    except Exception as e:
-        print(f"AI bilan ishlashda xatolik: {e}")
-        return _fallback_format(grants_list)
+    import time
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-3.5-flash',
+                contents=prompt,
+                config=config
+            )
+            result = response.text.strip()
+            if result:
+                print("AI muvaffaqiyatli javob qaytardi.")
+                return result
+            else:
+                print("AI bo'sh javob qaytardi.")
+                break
+                
+        except Exception as e:
+            error_str = str(e)
+            if "503" in error_str or "500" in error_str:
+                print(f"Gemini serveri band ({error_str[:50]}). {attempt + 1}-urinish xatosi. 10 soniya kutib yana urinamiz...")
+                time.sleep(10)
+                continue
+            else:
+                print(f"AI bilan ishlashda kutilmagan xatolik: {e}")
+                break
+                
+    print("Barcha urinishlar barbod bo'ldi. Zaxira (Fallback) shabloniga o'tilmoqda...")
+    return _fallback_format(grants_list)
 
 def _fallback_format(grants_list):
     """
