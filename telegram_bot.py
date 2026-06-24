@@ -21,7 +21,10 @@ def send_telegram_message(text, target_chat_id=None):
         "chat_id": final_chat_id,
         "text": text,
         "parse_mode": "HTML",
-        "disable_web_page_preview": False
+        "link_preview_options": {
+            "url": "https://t.me/Nova_Grants",
+            "prefer_large_media": True
+        }
     }
     
     try:
