@@ -8,3 +8,4 @@ schedule>=1.2.0
 pyrogram
 beautifulsoup4
 supabase
+Flask

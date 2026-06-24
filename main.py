@@ -1,9 +1,19 @@
 import time
+import threading
+import os
 import schedule
+from flask import Flask
 from database import init_db, is_grant_posted, mark_grant_posted
 from scraper import fetch_grants
 from ai_agent import format_multiple_grants_post
 from telegram_bot import send_telegram_message
+
+# Render uchun "Soxta Veb-sayt"
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "<h1>GrantBot is running smoothly in the background! 🚀</h1>"
 
 def job():
     print("Yangi grantlarni tekshirmoqda...")
@@ -30,25 +40,28 @@ def job():
     else:
         print("Hozircha yangi o'qilmagan grantlar yo'q.")
 
-def main():
+def run_schedule():
     # Bazani tayyorlash
     init_db()
     
-    print("Agent ishga tushdi. Dastlabki tekshiruv...")
+    print("Bot Orqa Fonda (Background) ishga tushdi. Dastlabki tekshiruv...")
     job() # Bir marta darhol ishlatamiz
     
     # Haftada 2 marta ishlash uchun sozlaymiz (Chorshanba va Shanba kunlari)
     schedule.every().wednesday.at("10:00").do(job)
     schedule.every().saturday.at("10:00").do(job)
-    print("Kutish rejimiga o'tildi (Har Chorshanba va Shanba 10:00 da tekshiriladi). Chiqish uchun Ctrl+C bosing.")
+    print("Kutish rejimiga o'tildi (Har Chorshanba va Shanba 10:00 da tekshiriladi).")
     
     while True:
-        try:
-            schedule.run_pending()
-            time.sleep(60)
-        except KeyboardInterrupt:
-            print("\nAgent ishlashdan to'xtatildi.")
-            break
+        schedule.run_pending()
+        time.sleep(60)
 
 if __name__ == "__main__":
-    main()
+    # 1. Botni alohida "Thread" (Parallel oqim) ga o'tkazib ishga tushiramiz
+    t = threading.Thread(target=run_schedule)
+    t.daemon = True # Asosiy dastur o'chsa, bu ham o'chadi
+    t.start()
+    
+    # 2. Asosiy oqimda (Main Thread) Flask web-serverni ishga tushiramiz (Render uchun)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
