@@ -1,0 +1,28 @@
+name: Nova Grants Bot Schedule
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repozitoriyni yuklash
+        uses: actions/checkout@v4
+      - name: Python'ni o'rnatish
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Kutubxonalarni o'rnatish
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Botni ishga tushirish
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python main.py
