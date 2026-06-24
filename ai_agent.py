@@ -25,7 +25,7 @@ Sen 'Nova Grants' Telegram kanalining boshqaruvchisi (Admini) san. O'zingni hech
 
 Talablar:
 1. Uzatilgan grantlar ichidan FAQAT O'zbekiston fuqarolari (yoki barcha xalqaro nomzodlar) topshirishi mumkin bo'lgan eng zo'rlarini tanlab oling. Agar grant faqat AQSH, Yevropa yoki faqat Afrika fuqarolari uchun bo'lsa, uni mutlaqo chiqarib tashlang.
-2. Sarlavha juda jozibali bo'lsin.
+2. Sarlavha juda jozibali bo'lsin, lekin "O'zbekistonliklar uchun" deb qotirib qo'ymang (bu qo'pol eshitilishi mumkin). (Masalan: "🔥 Hafta davomidagi eng sara xalqaro grantlar!").
 3. Matn formatlash uchun faqat Telegram HTML teglaridan foydalaning: <b>qalin matn</b>, <i>og'ma matn</i>, <u>tagi chizilgan</u>, <a href="url">Havola matni</a>. Hech qanday Markdown formatlashdan (* yoki **) umuman foydalanmang!
 4. Har bir grant uchun alohida raqamlangan ro'yxat qiling (1. 2. 3. ...).
 5. DIQQAT: Har bir grant ta'rifini boshlashda yulduzcha (*) yoki chiziqcha (-) EMAS, faqatgina katta qora nuqta (●) belgisini ishlating! Havolani (url) o'sha grant nomiga HTML <a> tegi orqali biriktiring.
@@ -56,8 +56,13 @@ Talablar:
         return response.text.strip()
     except Exception as e:
         print(f"AI bilan ishlashda xatolik: {e}")
-        fallback_text = "🎯 YANGI GRANTLAR TO'PLAMI!\n\n"
+        # Agar AI ishlamay qolsa ham, post xunuk bo'lmasligi uchun Zaxira (Fallback) qolipi
+        fallback_text = "🔥 <b>Hafta davomidagi eng sara xalqaro grantlar!</b>\n\n"
+        fallback_text += "Salom, grant ovchilari! 👋 Bu hafta ham siz uchun eng qiziqarli imkoniyatlarni jamladik:\n\n"
         for i, g in enumerate(grants_list):
-            fallback_text += f"{i+1}. {g.get('title', 'Nomalum')}\nBatafsil: {g.get('url', 'Nomalum')}\n\n"
+            fallback_text += f"{i+1}. <b><a href='{g.get('url', '#')}'>{g.get('title', 'Nomalum')}</a></b>\n"
+            fallback_text += f"● Eng yangi imkoniyatlar va moliyaviy yordamlar haqida batafsil ma'lumot olish uchun rasmiy saytiga kiring.\n\n"
+        
+        fallback_text += "🚀 Katta imkoniyatlar izlaganlarga ochiladi! Havolalarga kirib, saytlarni oʻzingiz ham chuqurroq oʻrganing, ichida yana oʻnlab yashirin grantlar kutib turgan boʻlishi mumkin!\n\n"
         fallback_text += "@Nova_Grants"
         return fallback_text

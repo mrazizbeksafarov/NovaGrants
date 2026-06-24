@@ -1,14 +1,22 @@
 import os
+from dotenv import load_dotenv
+load_dotenv() # Local muhit uchun
 from supabase import create_client, Client
 
 # Supabase ulanishi
-url: str = os.getenv("SUPABASE_URL", "")
-key: str = os.getenv("SUPABASE_KEY", "")
+url = str(os.getenv("SUPABASE_URL", "")).strip()
+key = str(os.getenv("SUPABASE_KEY", "")).strip()
 
 # Faqat kalitlar kiritilgan bo'lsagina ulanadi
-if url and key and url != "your_supabase_project_url_here":
-    supabase: Client = create_client(url, key)
-else:
+try:
+    if url and key and "your_supabase" not in url:
+        supabase: Client = create_client(url, key)
+        print("Supabase obyekti muvaffaqiyatli yaratildi.")
+    else:
+        supabase = None
+        print("DIQQAT: Supabase URL yoki KEY topilmadi!")
+except Exception as e:
+    print(f"Supabase ulanishida xatolik yuz berdi: {e}")
     supabase = None
 
 def init_db():
