@@ -61,6 +61,7 @@ Har bir grant matnini o'qib, uning tugash muddati (deadline) ni toping. Agar san
         system_instruction=system_instruction,
         response_mime_type="application/json",
         response_schema=FormattedPost,
+        tools=[{"google_search": {}}]
     )
     
     max_retries = 3
