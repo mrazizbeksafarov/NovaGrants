@@ -47,10 +47,9 @@ def run_schedule():
     print("Bot Orqa Fonda (Background) ishga tushdi. Dastlabki tekshiruv...")
     job() # Bir marta darhol ishlatamiz
     
-    # Haftada 2 marta ishlash uchun sozlaymiz (Chorshanba va Shanba kunlari)
-    schedule.every().wednesday.at("10:00").do(job)
-    schedule.every().saturday.at("10:00").do(job)
-    print("Kutish rejimiga o'tildi (Har Chorshanba va Shanba 10:00 da tekshiriladi).")
+    # Har kuni ertalab soat 10:00 da (O'zbekiston vaqti bo'yicha) grantlarni tekshiramiz
+    schedule.every().day.at("05:00").do(job)  # UTC 05:00 = UZT 10:00
+    print("Kutish rejimiga o'tildi (Har kuni soat 10:00 da tekshiriladi).")
     
     while True:
         schedule.run_pending()
