@@ -2,13 +2,12 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 from supabase import create_client, Client
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Supabase ulanishi
 url = str(os.getenv("SUPABASE_URL", "")).strip()
 key = str(os.getenv("SUPABASE_KEY", "")).strip()
 
-# Faqat kalitlar kiritilgan bo'lsagina ulanadi
 try:
     if url and key and "your_supabase" not in url:
         supabase: Client = create_client(url, key)
@@ -21,22 +20,17 @@ except Exception as e:
     supabase = None
 
 def init_db():
-    """Supabase ulanishini tekshirish."""
     if supabase:
         try:
-            # Ulanishni sinab ko'rish
             response = supabase.table("posted_grants").select("id").limit(1).execute()
-            print(f"Supabase bazasi tayyor. Jami {len(response.data)} ta yozuv topildi (test so'rov).")
+            print(f"Supabase bazasi tayyor. {len(response.data)} ta yozuv (test).")
         except Exception as e:
             print(f"Supabase bazasiga ulanishda muammo: {e}")
     else:
-        print("OGOHLANTIRISH: Supabase kalitlari topilmadi (.env faylini tekshiring).")
+        print("OGOHLANTIRISH: Supabase kalitlari topilmadi.")
 
 def is_grant_posted(grant_url: str) -> bool:
-    """Grant URL orqali oldin yuborilganini tekshirish."""
-    if not supabase:
-        return False
-        
+    if not supabase: return False
     try:
         response = supabase.table("posted_grants").select("id").eq("url", grant_url).execute()
         return len(response.data) > 0
@@ -44,46 +38,50 @@ def is_grant_posted(grant_url: str) -> bool:
         print(f"Bazada tekshirishda xatolik: {e}")
         return False
 
-def mark_grant_posted(title: str, grant_url: str):
-    """Grantni yuborilganlar ro'yxatiga (Supabase) qo'shish."""
-    if not supabase:
-        return
-        
+def mark_grant_posted(title: str, grant_url: str, deadline_iso: str = None):
+    if not supabase: return
     try:
-        data = {"title": title, "url": grant_url}
+        data = {
+            "title": title, 
+            "url": grant_url,
+            "deadline": deadline_iso,
+            "reminder_sent": False
+        }
         supabase.table("posted_grants").insert(data).execute()
-        print(f"  ✅ Bazaga saqlandi: {title[:50]}...")
+        print(f"  ✅ Bazaga saqlandi: {title[:50]}... (Deadline: {deadline_iso})")
     except Exception as e:
         print(f"  ❌ Bazaga yozishda xatolik: {e}")
 
-def get_last_post_time():
-    """
-    Bazadagi eng oxirgi yuborilgan grant vaqtini qaytaradi.
-    Agar baza bo'sh bo'lsa yoki xatolik yuz bersa None qaytaradi.
-    """
-    if not supabase:
-        return None
-    
+def get_grants_nearing_deadline(days: int = 5):
+    """Deadline'ga `days` kun qolgan va eslatma yuborilmagan grantlarni oladi."""
+    if not supabase: return []
     try:
-        response = (supabase.table("posted_grants")
-                    .select("posted_date")
-                    .order("posted_date", desc=True)
-                    .limit(1)
-                    .execute())
+        # Hozirgi vaqt va kelajak (5 kun) vaqti
+        now = datetime.now(timezone.utc)
+        future = now + timedelta(days=days)
         
-        if response.data and len(response.data) > 0:
-            date_str = response.data[0]["posted_date"]
-            # ISO format'dagi vaqtni parse qilamiz
-            return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        return None
+        now_str = now.isoformat()
+        future_str = future.isoformat()
+        
+        # deadline is not null AND reminder_sent is false AND deadline > now AND deadline <= future
+        response = (supabase.table("posted_grants")
+                    .select("*")
+                    .eq("reminder_sent", False)
+                    .not_.is_("deadline", "null")
+                    .gt("deadline", now_str)
+                    .lte("deadline", future_str)
+                    .execute())
+                    
+        return response.data
     except Exception as e:
-        print(f"Oxirgi post vaqtini olishda xatolik: {e}")
-        return None
+        print(f"Deadline yaqin grantlarni olishda xatolik: {e}")
+        return []
 
-if __name__ == "__main__":
-    init_db()
-    last = get_last_post_time()
-    if last:
-        print(f"Oxirgi post vaqti: {last.isoformat()}")
-    else:
-        print("Bazada hali post yo'q.")
+def mark_reminder_sent(grant_url: str):
+    """Eslatma yuborilganini belgilaydi."""
+    if not supabase: return
+    try:
+        supabase.table("posted_grants").update({"reminder_sent": True}).eq("url", grant_url).execute()
+        print(f"  ✅ Eslatma yuborildi deb belgilandi: {grant_url}")
+    except Exception as e:
+        print(f"Eslatmani saqlashda xatolik: {e}")

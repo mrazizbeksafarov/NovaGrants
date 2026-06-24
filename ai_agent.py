@@ -1,7 +1,11 @@
 import os
+import json
+import time
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from typing import List, Optional
 
 load_dotenv()
 
@@ -13,45 +17,53 @@ else:
     client = None
     print("DIQQAT: GEMINI_API_KEY topilmadi!")
 
+class GrantDeadline(BaseModel):
+    url: str = Field(description="Grant URL corresponding to the input")
+    deadline_iso: Optional[str] = Field(description="Deadline in ISO 8601 format (e.g. 2026-10-31T23:59:59Z). If no deadline is explicitly mentioned or it is unclear, return null.")
+
+class FormattedPost(BaseModel):
+    post_text: str = Field(description="The beautifully formatted Telegram post text containing all grants. Must use <b>, <i>, <a> tags.")
+    deadlines: List[GrantDeadline] = Field(description="List of extracted deadlines for each grant provided in the input.")
+
 def format_multiple_grants_post(grants_list):
-    """Grantlar ro'yxatini AI yordamida chiroyli Telegram postiga aylantirish."""
-    
+    """Grantlarni AI yordamida formatlash va JSON orqali deadline larni olish."""
     if not grants_list:
         return None
-    
+        
     if not client:
         print("AI ishlamayapti — Fallback (Zaxira) rejimiga o'tildi.")
-        return _fallback_format(grants_list)
+        return {"post_text": _fallback_format(grants_list), "deadlines": []}
         
     system_instruction = """
-Sen 'Nova Grants' Telegram kanalining boshqaruvchisi (Admini) san. O'zingni hech qachon "Agentman", "Sun'iy intellektman" yoki "Botman" deb tanishtirma! Buni hech kim bilmasligi kerak. Postni xuddi o'z obunachilari bilan samimiy suhbatlashayotgan professional inson (admin) sifatida yoz.
+Sen 'Nova Grants' Telegram kanalining boshqaruvchisi (Admini) san. O'zingni hech qachon "Agentman" yoki "Botman" deb tanishtirma! Postni xuddi o'z obunachilari bilan samimiy suhbatlashayotgan professional inson (admin) sifatida yoz.
 
-Talablar:
-1. Uzatilgan grantlar ichidan FAQAT O'zbekiston fuqarolari (yoki barcha xalqaro nomzodlar) topshirishi mumkin bo'lgan eng zo'rlarini tanlab oling. Agar grant faqat AQSH, Yevropa yoki faqat Afrika fuqarolari uchun bo'lsa, uni mutlaqo chiqarib tashlang.
-2. Sarlavha juda jozibali bo'lsin, lekin "O'zbekistonliklar uchun" deb qotirib qo'ymang (bu qo'pol eshitilishi mumkin). Sarlavhalarni har safar turlicha va ijodiy yozing! (Masalan: "🔥 Bugungi eng sara xalqaro grantlar!", "🎓 Sizni kutayotgan ajoyib imkoniyatlar!", "✨ Bugun e'lon qilingan eng yaxshi grantlar!" va hokazo).
-3. Matn formatlash uchun faqat Telegram HTML teglaridan foydalaning: <b>qalin matn</b>, <i>og'ma matn</i>, <u>tagi chizilgan</u>, <a href="url">Havola matni</a>. Hech qanday Markdown formatlashdan (* yoki **) umuman foydalanmang!
+Talablar (post_text uchun):
+1. Uzatilgan grantlar ichidan FAQAT O'zbekiston fuqarolari (yoki barcha xalqaro nomzodlar) topshirishi mumkin bo'lgan eng zo'rlarini tanlab oling. AQSH/Yevropa fuqarolari uchun bo'lsa chiqarib tashlang.
+2. Sarlavhani ijodiy yozing! (Masalan: "🔥 Bugungi eng sara xalqaro grantlar!", "🎓 Yangi ajoyib imkoniyatlar!").
+3. Matn formatlash uchun faqat Telegram HTML teglaridan foydalaning (<b>, <i>, <a>).
 4. Har bir grant uchun alohida raqamlangan ro'yxat qiling (1. 2. 3. ...).
-5. DIQQAT: Har bir grant ta'rifini boshlashda yulduzcha (*) yoki chiziqcha (-) EMAS, faqatgina katta qora nuqta (●) belgisini ishlating! Havolani (url) o'sha grant nomiga HTML <a> tegi orqali biriktiring.
+5. Har bir grant ta'rifida katta qora nuqta (●) belgisini ishlating. Havolani HTML <a> tegi orqali biriktiring.
 6. Minimal va chiroyli emojilardan foydalaning.
-7. O'quvchilarni mustaqil izlanish (research) qilishga undaydigan, ilhomlantiruvchi 1-2 gaplik motivatsiya (Call to Action) yozing. Bu gaplarni HAR SAFAR TURLICHA va IJODIY yoz, hech qachon bir xil takroriy matn yozma!
-8. Postning eng oxirida kanal manzilini qoldiring: @Nova_Grants
-9. Faqat va faqat tayyor post matnini qaytaring. Ortiqcha so'zlar yozmang.
+7. Post oxirida motivatsion gap (har safar turlicha) va kanal manzilini qoldiring: @Nova_Grants
+
+Talablar (deadlines uchun):
+Har bir grant matnini o'qib, uning tugash muddati (deadline) ni toping. Agar sanani aniq bilsangiz, uni ISO 8601 formatiga o'tkazib (masalan 2026-12-31T00:00:00Z) yozing. Agar muddat ko'rsatilmagan bo'lsa null qilib qaytaring.
 """
 
-    prompt = "Quyidagi grantlar ro'yxatini qayta ishlab, bitta qisqa va lo'nda post tayyorlang:\n\n"
+    prompt = "Quyidagi grantlar ro'yxatini qayta ishlab, bitta qisqa post tayyorlang va deadlinelarni ajrating:\n\n"
     for i, g in enumerate(grants_list):
         prompt += f"Grant {i+1}:\n"
         prompt += f"Sarlavha: {g.get('title', 'Nomalum')}\n"
         prompt += f"Havola: {g.get('url', 'Nomalum')}\n"
-        prompt += f"Qisqacha mazmuni: {g.get('summary', 'Nomalum')[:300]}...\n\n"
+        prompt += f"Qisqacha mazmuni: {g.get('summary', 'Nomalum')[:500]}...\n\n"
     
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
+        response_mime_type="application/json",
+        response_schema=FormattedPost,
     )
     
-    import time
     max_retries = 3
-    
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
@@ -61,16 +73,21 @@ Talablar:
             )
             result = response.text.strip()
             if result:
-                print("AI muvaffaqiyatli javob qaytardi.")
-                return result
+                print("AI muvaffaqiyatli JSON javob qaytardi.")
+                try:
+                    data = json.loads(result)
+                    return data
+                except Exception as e:
+                    print(f"JSON parsing xatosi: {e}")
+                    break
             else:
                 print("AI bo'sh javob qaytardi.")
                 break
                 
         except Exception as e:
             error_str = str(e)
-            if "503" in error_str or "500" in error_str:
-                print(f"Gemini serveri band ({error_str[:50]}). {attempt + 1}-urinish xatosi. 10 soniya kutib yana urinamiz...")
+            if "503" in error_str or "500" in error_str or "429" in error_str:
+                print(f"Gemini serveri band ({error_str[:50]}). {attempt + 1}-urinish xatosi. 10s kutamiz...")
                 time.sleep(10)
                 continue
             else:
@@ -78,13 +95,10 @@ Talablar:
                 break
                 
     print("Barcha urinishlar barbod bo'ldi. Zaxira (Fallback) shabloniga o'tilmoqda...")
-    return _fallback_format(grants_list)
+    return {"post_text": _fallback_format(grants_list), "deadlines": []}
 
 def _fallback_format(grants_list):
-    """
-    AI ishlamay qolganda ham post chiroyli ko'rinishi uchun zaxira formatlash.
-    Bu funksiya AI'siz ishlaydi.
-    """
+    """Zaxira formatlash."""
     fallback_text = "🔥 <b>Bugungi eng sara xalqaro grantlar!</b>\n\n"
     fallback_text += "Salom, grant ovchilari! 👋 Bugun ham siz uchun eng qiziqarli imkoniyatlarni jamladik:\n\n"
     for i, g in enumerate(grants_list):
