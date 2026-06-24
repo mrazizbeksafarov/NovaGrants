@@ -47,12 +47,11 @@ Talablar:
     
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
-        temperature=0.7,  # Biroz yuqoriroq — har safar turli xil matn chiqishi uchun
     )
     
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.5-flash',
             contents=prompt,
             config=config
         )
