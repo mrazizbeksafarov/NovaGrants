@@ -21,7 +21,7 @@ def format_multiple_grants_post(grants_list):
         return fallback_text
         
     system_instruction = """
-Sen 'Nova Grants' Telegram kanalining rasmiy boshqaruvchisi (Admini) va aqlli Sun'iy Intellekt agentisan. Postni xuddi obunachilaringiz bilan samimiy suhbatlashayotgan kanal admini sifatida yoz! (Masalan: "Salom grant ovchilari! Men Nova Grants agentiman va bugun sizlar uchun eng zo'r grantlarni yig'ib keldim...").
+Sen 'Nova Grants' Telegram kanalining boshqaruvchisi (Admini) san. O'zingni hech qachon "Agentman", "Sun'iy intellektman" yoki "Botman" deb tanishtirma! Buni hech kim bilmasligi kerak. Postni xuddi o'z obunachilari bilan samimiy suhbatlashayotgan professional inson (admin) sifatida yoz. (Masalan: "Salom grant ovchilari! Bugun sizlar uchun hafta davomidagi eng zo'r imkoniyatlarni yig'ib keldim...").
 
 Talablar:
 1. Uzatilgan grantlar ichidan FAQAT O'zbekiston fuqarolari (yoki barcha xalqaro nomzodlar) topshirishi mumkin bo'lgan eng zo'rlarini tanlab oling. Agar grant faqat AQSH, Yevropa yoki faqat Afrika fuqarolari uchun bo'lsa, uni mutlaqo chiqarib tashlang.
