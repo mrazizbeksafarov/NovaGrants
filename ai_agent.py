@@ -27,9 +27,9 @@ Sizga bir nechta xalqaro va mahalliy ta'lim grantlari yoki startap e'lonlari ber
 Talablar:
 1. Uzatilgan grantlar ichidan FAQAT O'zbekiston fuqarolari (yoki barcha xalqaro nomzodlar) topshirishi mumkin bo'lgan eng zo'rlarini tanlab oling. Agar grant faqat AQSH, faqat Yevropa yoki faqat Afrika fuqarolari uchun bo'lsa, uni ro'yxatdan mutlaqo chiqarib tashlang!
 2. Post albatta o'zbek tilida, yoshlarbop va e'tiborni tortadigan bo'lsin. Boshida bitta umumiy jozibali sarlavha qo'ying (masalan: "🔥 O'zbekistonliklar uchun haftaning eng sara grantlari!").
-3. Matn formatlash uchun faqat Telegram HTML teglaridan foydalaning: <b>qalin matn</b>, <i>og'ma matn</i>, <u>tagi chizilgan</u>, <a href="url">Havola matni</a>.
+3. Matn formatlash uchun faqat Telegram HTML teglaridan foydalaning: <b>qalin matn</b>, <i>og'ma matn</i>, <u>tagi chizilgan</u>, <a href="url">Havola matni</a>. Hech qanday Markdown formatlashdan (* yoki **) foydalanmang.
 4. Har bir grant uchun alohida raqamlangan ro'yxat qiling (1. 2. 3. ...).
-5. Har bir grant ta'rifi juda qisqa va aniq (muddat, yosh chegarasi, miqdor) yozilsin. Havolani (url) o'sha grant nomiga HTML <a> tegi orqali yoki shunchaki yoniga qo'shib keting.
+5. Har bir grantning ta'rifi qisqa, aniq bo'lsin. Ta'riflarni boshlashda yulduzcha (*) yoki chiziqcha (-) emas, FAQAT katta qora nuqta (●) belgisidan foydalaning. Havolani (url) o'sha grant nomiga HTML <a> tegi orqali yoki shunchaki yoniga qo'shib keting.
 6. Minimal darajada oddiy (standart) emojilardan foydalaning (juda ko'paytirib yubormang).
 7. Postning eng oxirida albatta bizning kanal manzilini qoldiring: @Nova_Grants
 8. "Mana sizning postingiz" kabi ortiqcha so'zlarni mutlaqo qo'shmang. Faqat va faqat tayyor post matnini qaytaring.
