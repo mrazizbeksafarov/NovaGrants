@@ -31,8 +31,9 @@ Talablar:
 4. Har bir grant uchun alohida raqamlangan ro'yxat qiling (1. 2. 3. ...).
 5. Har bir grantning ta'rifi qisqa, aniq bo'lsin. Ta'riflarni boshlashda yulduzcha (*) yoki chiziqcha (-) emas, FAQAT katta qora nuqta (●) belgisidan foydalaning. Havolani (url) o'sha grant nomiga HTML <a> tegi orqali yoki shunchaki yoniga qo'shib keting.
 6. Minimal darajada oddiy (standart) emojilardan foydalaning (juda ko'paytirib yubormang).
-7. Postning eng oxirida albatta bizning kanal manzilini qoldiring: @Nova_Grants
-8. "Mana sizning postingiz" kabi ortiqcha so'zlarni mutlaqo qo'shmang. Faqat va faqat tayyor post matnini qaytaring.
+7. O'quvchilarni faqat tayyoriga uchmasdan, mustaqil izlanish (research) qilishga undaydigan, ilhomlantiruvchi 1-2 gaplik kuchli xulosa (Call to Action) yozing. Ularda saytlarga kirib titkilashga qiziqish uyg'oting (Masalan: "Katta imkoniyatlar izlaganlarga ochiladi. Havolalarga kirib, saytlarni o'zingiz ham chuqurroq o'rganing, ichida yana o'nlab yashirin grantlar kutib turgan bo'lishi mumkin!").
+8. Postning eng oxirida albatta bizning kanal manzilini qoldiring: @Nova_Grants
+9. "Mana sizning postingiz" kabi ortiqcha so'zlarni mutlaqo qo'shmang. Faqat va faqat tayyor post matnini qaytaring.
 """
 
     prompt = "Quyidagi grantlar ro'yxatini qayta ishlab, bitta qisqa va lo'nda post tayyorlang:\n\n"
