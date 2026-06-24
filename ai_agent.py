@@ -8,29 +8,32 @@ load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 if api_key and api_key != "your_google_gemini_api_key_here":
     client = genai.Client(api_key=api_key)
+    print("Gemini AI clienti tayyor.")
 else:
     client = None
+    print("DIQQAT: GEMINI_API_KEY topilmadi!")
 
 def format_multiple_grants_post(grants_list):
+    """Grantlar ro'yxatini AI yordamida chiroyli Telegram postiga aylantirish."""
+    
+    if not grants_list:
+        return None
+    
     if not client:
-        # Fallback agar AI ishlamasa
-        fallback_text = "🎯 YANGI GRANTLAR TO'PLAMI!\n\n"
-        for i, g in enumerate(grants_list):
-            fallback_text += f"{i+1}. {g.get('title', 'Nomalum')}\nBatafsil: {g.get('url', 'Nomalum')}\n\n"
-        fallback_text += "@Nova_Grants"
-        return fallback_text
+        print("AI ishlamayapti — Fallback (Zaxira) rejimiga o'tildi.")
+        return _fallback_format(grants_list)
         
     system_instruction = """
-Sen 'Nova Grants' Telegram kanalining boshqaruvchisi (Admini) san. O'zingni hech qachon "Agentman", "Sun'iy intellektman" yoki "Botman" deb tanishtirma! Buni hech kim bilmasligi kerak. Postni xuddi o'z obunachilari bilan samimiy suhbatlashayotgan professional inson (admin) sifatida yoz. (Masalan: "Salom grant ovchilari! Bugun sizlar uchun hafta davomidagi eng zo'r imkoniyatlarni yig'ib keldim...").
+Sen 'Nova Grants' Telegram kanalining boshqaruvchisi (Admini) san. O'zingni hech qachon "Agentman", "Sun'iy intellektman" yoki "Botman" deb tanishtirma! Buni hech kim bilmasligi kerak. Postni xuddi o'z obunachilari bilan samimiy suhbatlashayotgan professional inson (admin) sifatida yoz.
 
 Talablar:
 1. Uzatilgan grantlar ichidan FAQAT O'zbekiston fuqarolari (yoki barcha xalqaro nomzodlar) topshirishi mumkin bo'lgan eng zo'rlarini tanlab oling. Agar grant faqat AQSH, Yevropa yoki faqat Afrika fuqarolari uchun bo'lsa, uni mutlaqo chiqarib tashlang.
-2. Sarlavha juda jozibali bo'lsin, lekin "O'zbekistonliklar uchun" deb qotirib qo'ymang (bu qo'pol eshitilishi mumkin). (Masalan: "🔥 Hafta davomidagi eng sara xalqaro grantlar!").
+2. Sarlavha juda jozibali bo'lsin, lekin "O'zbekistonliklar uchun" deb qotirib qo'ymang (bu qo'pol eshitilishi mumkin). Sarlavhalarni har safar turlicha va ijodiy yozing! (Masalan: "🔥 Bugungi eng sara xalqaro grantlar!", "🎓 Sizni kutayotgan ajoyib imkoniyatlar!", "✨ Bugun e'lon qilingan eng yaxshi grantlar!" va hokazo).
 3. Matn formatlash uchun faqat Telegram HTML teglaridan foydalaning: <b>qalin matn</b>, <i>og'ma matn</i>, <u>tagi chizilgan</u>, <a href="url">Havola matni</a>. Hech qanday Markdown formatlashdan (* yoki **) umuman foydalanmang!
 4. Har bir grant uchun alohida raqamlangan ro'yxat qiling (1. 2. 3. ...).
 5. DIQQAT: Har bir grant ta'rifini boshlashda yulduzcha (*) yoki chiziqcha (-) EMAS, faqatgina katta qora nuqta (●) belgisini ishlating! Havolani (url) o'sha grant nomiga HTML <a> tegi orqali biriktiring.
 6. Minimal va chiroyli emojilardan foydalaning.
-7. O'quvchilarni faqat tayyoriga uchmasdan, mustaqil izlanish (research) qilishga undaydigan, ilhomlantiruvchi 1-2 gaplik motivatsiya (Call to Action) yozing. 
+7. O'quvchilarni mustaqil izlanish (research) qilishga undaydigan, ilhomlantiruvchi 1-2 gaplik motivatsiya (Call to Action) yozing. Bu gaplarni HAR SAFAR TURLICHA va IJODIY yoz, hech qachon bir xil takroriy matn yozma!
 8. Postning eng oxirida kanal manzilini qoldiring: @Nova_Grants
 9. Faqat va faqat tayyor post matnini qaytaring. Ortiqcha so'zlar yozmang.
 """
@@ -44,7 +47,7 @@ Talablar:
     
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
-        temperature=0.4,
+        temperature=0.7,  # Biroz yuqoriroq — har safar turli xil matn chiqishi uchun
     )
     
     try:
@@ -53,16 +56,30 @@ Talablar:
             contents=prompt,
             config=config
         )
-        return response.text.strip()
+        result = response.text.strip()
+        if result:
+            print("AI muvaffaqiyatli javob qaytardi.")
+            return result
+        else:
+            print("AI bo'sh javob qaytardi — Fallback rejimiga o'tildi.")
+            return _fallback_format(grants_list)
     except Exception as e:
         print(f"AI bilan ishlashda xatolik: {e}")
-        # Agar AI ishlamay qolsa ham, post xunuk bo'lmasligi uchun Zaxira (Fallback) qolipi
-        fallback_text = "🔥 <b>Hafta davomidagi eng sara xalqaro grantlar!</b>\n\n"
-        fallback_text += "Salom, grant ovchilari! 👋 Bu hafta ham siz uchun eng qiziqarli imkoniyatlarni jamladik:\n\n"
-        for i, g in enumerate(grants_list):
-            fallback_text += f"{i+1}. <b><a href='{g.get('url', '#')}'>{g.get('title', 'Nomalum')}</a></b>\n"
-            fallback_text += f"● Eng yangi imkoniyatlar va moliyaviy yordamlar haqida batafsil ma'lumot olish uchun rasmiy saytiga kiring.\n\n"
-        
-        fallback_text += "🚀 Katta imkoniyatlar izlaganlarga ochiladi! Havolalarga kirib, saytlarni oʻzingiz ham chuqurroq oʻrganing, ichida yana oʻnlab yashirin grantlar kutib turgan boʻlishi mumkin!\n\n"
-        fallback_text += "@Nova_Grants"
-        return fallback_text
+        return _fallback_format(grants_list)
+
+def _fallback_format(grants_list):
+    """
+    AI ishlamay qolganda ham post chiroyli ko'rinishi uchun zaxira formatlash.
+    Bu funksiya AI'siz ishlaydi.
+    """
+    fallback_text = "🔥 <b>Bugungi eng sara xalqaro grantlar!</b>\n\n"
+    fallback_text += "Salom, grant ovchilari! 👋 Bugun ham siz uchun eng qiziqarli imkoniyatlarni jamladik:\n\n"
+    for i, g in enumerate(grants_list):
+        title = g.get('title', 'Nomalum')
+        url = g.get('url', '#')
+        fallback_text += f"{i+1}. <b><a href='{url}'>{title}</a></b>\n"
+        fallback_text += f"● Batafsil ma'lumot olish uchun rasmiy saytiga kiring.\n\n"
+    
+    fallback_text += "🚀 Katta imkoniyatlar izlaganlarga ochiladi! Havolalarga kirib, saytlarni o'zingiz ham chuqurroq o'rganing!\n\n"
+    fallback_text += "@Nova_Grants"
+    return fallback_text

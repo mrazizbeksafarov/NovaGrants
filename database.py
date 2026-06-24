@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
-load_dotenv() # Local muhit uchun
+load_dotenv()
 from supabase import create_client, Client
+from datetime import datetime, timezone
 
 # Supabase ulanishi
 url = str(os.getenv("SUPABASE_URL", "")).strip()
@@ -20,44 +21,69 @@ except Exception as e:
     supabase = None
 
 def init_db():
-    """
-    Supabase'da jadvalni dastur ichidan avtomatik yaratib bo'lmaydi.
-    Buning uchun Supabase SQL Editor'da quyidagi kodni ishga tushirishingiz kerak:
-    
-    CREATE TABLE posted_grants (
-        id SERIAL PRIMARY KEY,
-        title TEXT NOT NULL,
-        url TEXT NOT NULL UNIQUE,
-        posted_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-    """
+    """Supabase ulanishini tekshirish."""
     if supabase:
-        print("Supabase ma'lumotlar bazasiga muvaffaqiyatli ulandi.")
+        try:
+            # Ulanishni sinab ko'rish
+            response = supabase.table("posted_grants").select("id").limit(1).execute()
+            print(f"Supabase bazasi tayyor. Jami {len(response.data)} ta yozuv topildi (test so'rov).")
+        except Exception as e:
+            print(f"Supabase bazasiga ulanishda muammo: {e}")
     else:
         print("OGOHLANTIRISH: Supabase kalitlari topilmadi (.env faylini tekshiring).")
 
-def is_grant_posted(url: str) -> bool:
+def is_grant_posted(grant_url: str) -> bool:
     """Grant URL orqali oldin yuborilganini tekshirish."""
     if not supabase:
-        return False # Agar ulanmagan bo'lsa, doim yangi deb o'ylaydi
+        return False
         
     try:
-        response = supabase.table("posted_grants").select("*").eq("url", url).execute()
+        response = supabase.table("posted_grants").select("id").eq("url", grant_url).execute()
         return len(response.data) > 0
     except Exception as e:
         print(f"Bazada tekshirishda xatolik: {e}")
         return False
 
-def mark_grant_posted(title: str, url: str):
+def mark_grant_posted(title: str, grant_url: str):
     """Grantni yuborilganlar ro'yxatiga (Supabase) qo'shish."""
     if not supabase:
         return
         
     try:
-        data = {"title": title, "url": url}
+        data = {"title": title, "url": grant_url}
         supabase.table("posted_grants").insert(data).execute()
+        print(f"  ✅ Bazaga saqlandi: {title[:50]}...")
     except Exception as e:
-        print(f"Bazaga yozishda xatolik: {e}")
+        print(f"  ❌ Bazaga yozishda xatolik: {e}")
+
+def get_last_post_time():
+    """
+    Bazadagi eng oxirgi yuborilgan grant vaqtini qaytaradi.
+    Agar baza bo'sh bo'lsa yoki xatolik yuz bersa None qaytaradi.
+    """
+    if not supabase:
+        return None
+    
+    try:
+        response = (supabase.table("posted_grants")
+                    .select("posted_date")
+                    .order("posted_date", desc=True)
+                    .limit(1)
+                    .execute())
+        
+        if response.data and len(response.data) > 0:
+            date_str = response.data[0]["posted_date"]
+            # ISO format'dagi vaqtni parse qilamiz
+            return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return None
+    except Exception as e:
+        print(f"Oxirgi post vaqtini olishda xatolik: {e}")
+        return None
 
 if __name__ == "__main__":
     init_db()
+    last = get_last_post_time()
+    if last:
+        print(f"Oxirgi post vaqti: {last.isoformat()}")
+    else:
+        print("Bazada hali post yo'q.")

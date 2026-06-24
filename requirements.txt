@@ -1,11 +1,8 @@
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 feedparser>=6.0.10
-python-telegram-bot>=21.0.0
-google-genai>=0.1.0
+google-genai>=1.0.0
 python-dotenv>=1.0.0
 schedule>=1.2.0
-pyrogram
-beautifulsoup4
-supabase
-Flask
+supabase>=2.0.0
+Flask>=3.0.0
