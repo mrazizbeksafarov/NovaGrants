@@ -3,19 +3,65 @@ import requests
 from bs4 import BeautifulSoup
 import re
 
-# Manbalar ro'yxati (RSS va Telegram)
 SOURCES = [
-    # Mahalliy RSS (O'zbekiston)
-    {"type": "rss", "url": "https://grantlar.uz/feed/"},
-    
-    # Xalqaro RSS (Startaplar va Global grantlar)
+    # 🎓 1. Global Ta'lim va Yoshlar Grantlari (Mega Baza)
+    {"type": "rss", "url": "https://www.scholars4dev.com/feed/"},
     {"type": "rss", "url": "https://opportunitydesk.org/feed"},
     {"type": "rss", "url": "https://www.youthop.com/feed"},
-    {"type": "rss", "url": "https://www.scholarshipsads.com/feed"},
+    {"type": "rss", "url": "https://opportunitiescorners.com/feed/"},
+    {"type": "rss", "url": "https://scholarshiproar.com/feed/"},
+    {"type": "rss", "url": "https://www.wemakescholars.com/blog/feed"},
+    {"type": "rss", "url": "https://scholarshipdb.net/scholarships?q=&rss=1"},
+    {"type": "rss", "url": "https://scholarship-positions.com/feed/"},
+    {"type": "rss", "url": "https://www.advance-africa.com/advance-africa.xml"},
+    {"type": "rss", "url": "https://oyaop.com/feed/"},
     {"type": "rss", "url": "https://opportunitiesforyouth.org/feed/"},
-    
-    # Mahalliy Telegram Kanallari (Startap va Ta'lim)
-    {"type": "telegram", "channel": "edugrantsuz"},
+
+    # 🌍 2. Mintaqaviy Gigantlar (Yevropa, Osiyo, Afrika, MENA)
+    {"type": "rss", "url": "https://www.opportunitiesforafricans.com/feed/"},
+    {"type": "rss", "url": "https://afterschoolafrica.com/feed/"},
+    {"type": "rss", "url": "https://www.salto-youth.net/tools/european-training-calendar/rss/"},
+    {"type": "rss", "url": "https://opportunitiescircle.com/feed/"},
+    {"type": "rss", "url": "https://www.heysuccess.com/blog/feed"},
+
+    # 👑 3. Nufuzli Fellowship va Liderlik dasturlari
+    {"type": "rss", "url": "https://www.profellow.com/feed/"},
+    {"type": "rss", "url": "https://armacad.info/rss"},
+    {"type": "rss", "url": "http://www.mladiinfo.eu/feed/"},
+
+    # 🚀 4. Startaplar, Akseleratorlar va Investitsiyalar (VC)
+    {"type": "rss", "url": "https://techcrunch.com/category/startups/feed/"},
+    {"type": "rss", "url": "https://blog.ycombinator.com/feed/"},
+    {"type": "rss", "url": "https://news.crunchbase.com/feed/"},
+    {"type": "rss", "url": "https://wellfound.com/blog/feed"},
+    {"type": "rss", "url": "https://www.eu-startups.com/feed/"},
+    {"type": "rss", "url": "https://sifted.eu/feed/"},
+    {"type": "rss", "url": "https://www.wamda.com/feed"},
+    {"type": "rss", "url": "https://disrupt-africa.com/feed/"},
+    {"type": "rss", "url": "https://e27.co/feed/"},
+    {"type": "rss", "url": "https://www.dealstreetasia.com/feed/"},
+    {"type": "rss", "url": "https://www.techinasia.com/feed"},
+    {"type": "rss", "url": "https://magazine.startus.cc/feed/"},
+    {"type": "rss", "url": "https://blog.gust.com/feed/"},
+
+    # 🎨🔬 5. Maxsus Yo'nalishlar (Ayollar, San'at, Ilm-fan)
+    {"type": "rss", "url": "https://philanthropywomen.org/feed/"},
+    {"type": "rss", "url": "https://awdf.org/feed/"},
+    {"type": "rss", "url": "https://www.arts.gov/rss.xml"},
+    {"type": "rss", "url": "https://www.ukri.org/feed/"},
+    {"type": "rss", "url": "https://terravivagrants.org/feed/"},
+    {"type": "rss", "url": "https://www.grants.gov/rss/GG_OppModByCategory.xml"},
+
+    # 🤝 6. Ijtimoiy Loyihalar va NGO Grantlari
+    {"type": "rss", "url": "https://www.fundsforngos.org/feed/"},
+    {"type": "rss", "url": "https://www.grants.gov/rss"},
+    {"type": "rss", "url": "https://www.devex.com/news/rss"},
+
+    # 🇺🇿 Mahalliy RSS (O'zbekiston)
+    {"type": "rss", "url": "https://grantlar.uz/feed/"},
+
+    # 📱 Mahalliy Telegram Kanallari (Startap va Ta'lim)
+    {"type": "telegram", "channel": "edugrandsuz"},
     {"type": "telegram", "channel": "grantlar"},
     {"type": "telegram", "channel": "erasmus_uz"},
     {"type": "telegram", "channel": "grantsuzb"}
