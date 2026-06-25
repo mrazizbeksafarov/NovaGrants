@@ -108,4 +108,6 @@ def run():
     print("Vazifa yakunlandi.")
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding='utf-8')
     run()
