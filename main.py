@@ -58,8 +58,6 @@ def job():
     for grant in grants:
         if not is_grant_posted(grant['url']):
             unposted_grants.append(grant)
-            if len(unposted_grants) >= 5:
-                break
                 
     if unposted_grants:
         print(f"{len(unposted_grants)} ta yangi grant topildi. Post tayyorlanmoqda...")
