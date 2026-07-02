@@ -26,23 +26,47 @@ def init_db():
             print(f"Supabase bazasi tayyor. {len(response.data)} ta yozuv (test).")
         except Exception as e:
             print(f"Supabase bazasiga ulanishda muammo: {e}")
+            import sys
+            sys.exit(1)
     else:
         print("OGOHLANTIRISH: Supabase kalitlari topilmadi.")
+        import sys
+        sys.exit(1)
 
-def is_grant_posted(grant_url: str) -> bool:
-    if not supabase: return False
-    try:
-        response = supabase.table("posted_grants").select("id").eq("url", grant_url).execute()
-        return len(response.data) > 0
-    except Exception as e:
-        print(f"Bazada tekshirishda xatolik: {e}")
-        return False
+def get_posted_urls(grant_urls: list) -> set:
+    """N+1 muammosini hal qilish uchun yuzlab URL larni bitta so'rov orqali tekshiradi."""
+    if not supabase:
+        import sys
+        sys.exit(1)
+        
+    if not grant_urls:
+        return set()
+        
+    posted_urls = set()
+    chunk_size = 100
+    
+    for i in range(0, len(grant_urls), chunk_size):
+        chunk = grant_urls[i:i+chunk_size]
+        try:
+            response = supabase.table("posted_grants").select("url").in_("url", chunk).execute()
+            for row in response.data:
+                posted_urls.add(row["url"])
+        except Exception as e:
+            print(f"Bazada tekshirishda xatolik (Spam himoyasi ishga tushdi): {e}")
+            import sys
+            sys.exit(1) # Baza ishlamasa skriptni to'xtatish (spam yubormaslik uchun)
+            
+    return posted_urls
 
 def mark_grant_posted(title: str, grant_url: str, deadline_iso: str = None):
     if not supabase: return
     try:
+        # LLM ba'zan yaroqsiz format bersa uni tekshiramiz
+        if deadline_iso and (deadline_iso == "null" or len(deadline_iso) < 10):
+            deadline_iso = None
+            
         data = {
-            "title": title, 
+            "title": title[:255], 
             "url": grant_url,
             "deadline": deadline_iso,
             "reminder_sent": False
@@ -56,14 +80,12 @@ def get_grants_nearing_deadline(days: int = 5):
     """Deadline'ga `days` kun qolgan va eslatma yuborilmagan grantlarni oladi."""
     if not supabase: return []
     try:
-        # Hozirgi vaqt va kelajak (5 kun) vaqti
         now = datetime.now(timezone.utc)
         future = now + timedelta(days=days)
         
         now_str = now.isoformat()
         future_str = future.isoformat()
         
-        # deadline is not null AND reminder_sent is false AND deadline > now AND deadline <= future
         response = (supabase.table("posted_grants")
                     .select("*")
                     .eq("reminder_sent", False)
@@ -85,3 +107,4 @@ def mark_reminder_sent(grant_url: str):
         print(f"  ✅ Eslatma yuborildi deb belgilandi: {grant_url}")
     except Exception as e:
         print(f"Eslatmani saqlashda xatolik: {e}")
+

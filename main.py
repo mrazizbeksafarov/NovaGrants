@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone
 from database import (
-    init_db, is_grant_posted, mark_grant_posted, 
+    init_db, get_posted_urls, mark_grant_posted, 
     get_grants_nearing_deadline, mark_reminder_sent
 )
 from scraper import fetch_grants
@@ -54,38 +54,45 @@ def job():
         print("Hech qanday grant topilmadi (manbalar bilan muammo).")
         return
     
-    unposted_grants = []
-    for grant in grants:
-        if not is_grant_posted(grant['url']):
-            unposted_grants.append(grant)
+    all_urls = [g['url'] for g in grants]
+    posted_urls = get_posted_urls(all_urls)
+    
+    unposted_grants = [g for g in grants if g['url'] not in posted_urls]
                 
     if unposted_grants:
-        print(f"{len(unposted_grants)} ta yangi grant topildi. Post tayyorlanmoqda...")
+        print(f"{len(unposted_grants)} ta yangi grant topildi. Post tayyorlanmoqda (10 tadan)...")
         
-        try:
-            ai_data = format_multiple_grants_post(unposted_grants)
-        except Exception as e:
-            print(f"AI formatlashda xatolik: {e}")
-            return
+        chunk_size = 10
+        total_saved = 0
+        for i in range(0, len(unposted_grants), chunk_size):
+            batch = unposted_grants[i:i+chunk_size]
+            print(f"Betch ({i//chunk_size + 1}): {len(batch)} ta grant AI ga yuborilmoqda...")
             
-        if not ai_data or "post_text" not in ai_data:
-            print("AI dan noto'g'ri javob keldi.")
-            return
+            try:
+                ai_data = format_multiple_grants_post(batch)
+            except Exception as e:
+                print(f"AI formatlashda xatolik: {e}")
+                continue
+                
+            if not ai_data or "post_text" not in ai_data:
+                print("AI dan noto'g'ri javob keldi. O'tkazib yuborilmoqda...")
+                continue
+                
+            post_text = ai_data["post_text"]
+            deadlines_list = ai_data.get("deadlines", [])
             
-        post_text = ai_data["post_text"]
-        deadlines_list = ai_data.get("deadlines", [])
-        
-        # Deadlinelarni URL bo'yicha lug'atga yig'ib olamiz
-        deadline_map = {d.get("url"): d.get("deadline_iso") for d in deadlines_list if type(d) is dict}
-        
-        success = send_telegram_message(post_text)
-        if success:
-            for g in unposted_grants:
-                d_iso = deadline_map.get(g['url'])
-                mark_grant_posted(g['title'], g['url'], deadline_iso=d_iso)
-            print(f"Baza yangilandi: {len(unposted_grants)} ta grant saqlandi.")
-        else:
-            print("Xabar yuborilmadi, keyingi safar qayta urinib ko'riladi.")
+            deadline_map = {d.get("url"): d.get("deadline_iso") for d in deadlines_list if type(d) is dict}
+            
+            success = send_telegram_message(post_text)
+            if success:
+                for g in batch:
+                    d_iso = deadline_map.get(g['url'])
+                    mark_grant_posted(g['title'], g['url'], deadline_iso=d_iso)
+                    total_saved += 1
+            else:
+                print("Xabar yuborilmadi, bu batch keyingi safar qayta urinib ko'riladi.")
+                
+        print(f"Baza yangilandi: {total_saved} ta grant saqlandi.")
     else:
         print("Hozircha yangi grant yo'q.")
 

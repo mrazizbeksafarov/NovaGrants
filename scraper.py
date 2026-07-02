@@ -64,15 +64,36 @@ SOURCES = [
     {"type": "telegram", "channel": "edugrandsuz"},
     {"type": "telegram", "channel": "grantlar"},
     {"type": "telegram", "channel": "erasmus_uz"},
-    {"type": "telegram", "channel": "grantsuzb"}
+    {"type": "telegram", "channel": "grantsuzb"},
+    {"type": "telegram", "channel": "startupbaseuz"},
+    {"type": "telegram", "channel": "itpark_uz"},
+    {"type": "telegram", "channel": "yoshlaragentligi"},
+    {"type": "telegram", "channel": "uzvc_uz"},
+    {"type": "telegram", "channel": "aloqaventures"},
+    {"type": "telegram", "channel": "startupmix"},
+    {"type": "telegram", "channel": "udevs_news"},
+    {"type": "telegram", "channel": "udevs_jobs"},
+
+    # 🌐 Yangi Global RSS Manbalar (Tech/VC)
+    {"type": "rss", "url": "https://techcrunch.com/funding/feed/"},
+    {"type": "rss", "url": "https://new.nsf.gov/rss"},
+    {"type": "rss", "url": "http://firstround.com/review/feed.xml"},
+    {"type": "rss", "url": "http://vccafe.com/feed/"},
+    {"type": "rss", "url": "https://news.ycombinator.com/rss"},
+
+    # 🌐 Yangi Global Telegram Kanallar
+    {"type": "telegram", "channel": "theglobalscholarship"},
+    {"type": "telegram", "channel": "opportunitiescorners"},
+    {"type": "telegram", "channel": "startups"},
+    {"type": "telegram", "channel": "solofounders"}
 ]
 
 def scrape_rss(url):
     grants = []
     try:
         feed = feedparser.parse(url)
-        # Oxirgi 5 ta eng yangi grantlarni olamiz
-        for entry in feed.entries[:5]:
+        # Oxirgi 20 ta eng yangi grantlarni olamiz
+        for entry in feed.entries[:20]:
             grant_id = entry.get("id", entry.get("link"))
             title = entry.get("title", "")
             link = entry.get("link", "")
@@ -106,8 +127,8 @@ def scrape_telegram(channel_username):
             messages = soup.find_all('div', class_='tgme_widget_message_text')
             dates = soup.find_all('a', class_='tgme_widget_message_date')
             
-            # Eng oxirgi 5 ta postni olamiz
-            for msg, date_tag in zip(messages[-5:], dates[-5:]):
+            # Eng oxirgi 20 ta postni olamiz
+            for msg, date_tag in zip(messages[-20:], dates[-20:]):
                 msg_text = msg.get_text(separator="\n", strip=True)
                 
                 # Agar post juda qisqa bo'lsa, uni o'tkazib yuboramiz (faqat rasm bo'lishi mumkin)
@@ -135,20 +156,32 @@ def scrape_telegram(channel_username):
     
     return grants
 
+def fetch_single_source(source):
+    if source["type"] == "rss":
+        return scrape_rss(source["url"])
+    elif source["type"] == "telegram":
+        return scrape_telegram(source["channel"])
+    return []
+
 def fetch_grants():
     all_grants = []
-    print("Ma'lumotlar yig'ilmoqda...")
+    print(f"Ma'lumotlar yig'ilmoqda... Jami manbalar: {len(SOURCES)}")
     
-    for source in SOURCES:
-        if source["type"] == "rss":
-            # print(f"RSS o'qilmoqda: {source['url']}")
-            grants = scrape_rss(source["url"])
-            all_grants.extend(grants)
-        elif source["type"] == "telegram":
-            # print(f"Telegram o'qilmoqda: @{source['channel']}")
-            grants = scrape_telegram(source["channel"])
-            all_grants.extend(grants)
-            
+    import concurrent.futures
+    # 10 ta parallel oqimda (thread) ishlatish
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_source = {executor.submit(fetch_single_source, src): src for src in SOURCES}
+        
+        for future in concurrent.futures.as_completed(future_to_source):
+            src = future_to_source[future]
+            try:
+                data = future.result()
+                if data:
+                    all_grants.extend(data)
+            except Exception as exc:
+                name = src.get('url') or src.get('channel')
+                print(f"{name} manbasini o'qishda kutilmagan xatolik: {exc}")
+                
     return all_grants
 
 if __name__ == "__main__":
