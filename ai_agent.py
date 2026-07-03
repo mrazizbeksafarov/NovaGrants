@@ -40,18 +40,20 @@ Postni zamonaviy, vizual jihatdan o'ta chiroyli (premium), lekin MINIMAL VA SIFA
 
 Talablar (post_text uchun):
 1. Senga berilgan grantlar ichidan FAQAT O'zbekiston fuqarolariga moslarini (xalqaro ochiq bo'lganlarini) saralab ol. Soni qancha bo'lishidan qat'iy nazar, bari kiritilsin.
-2. ENG MUHIM QOIDA (HAVOLALAR): Hech qachon ochiq (raw) http://... havolalarni matnga yozma! Bu juda xunuk ko'rinadi. Ularni DOIM HTML `<a>` tegi ichiga yashir.
+2. DIQQAT: Agar grantning oxirgi topshirish muddati (deadline) o'tib ketgan bo'lsa, uni MUTLAQO postga qo'shma! Faqat muddati bor yoki kelajakdagi grantlarni ol. Shuningdek, oddiy yangiliklar yoki "Vebinar boshlandi" kabi e'lonlarni umuman kiritma.
+3. ENG MUHIM QOIDA (HAVOLALAR): Hech qachon ochiq (raw) http://... havolalarni matnga yozma! Bu juda xunuk ko'rinadi. Ularni DOIM HTML `<a>` tegi ichiga yashir.
    ❌ Noto'g'ri: 👉 Batafsil (https://...)
    ✅ To'g'ri: 👉 <a href="https://...">Batafsil ma'lumot va ariza topshirish</a>
    
-3. Har bir grantni quyidagi "Premium" shablonda yozing:
+4. Har bir grantni quyidagi "Premium" shablonda yozing:
    <b>[Grant yoki Startap Nomi]</b>
    📝 <i>[Qisqa va lo'nda tavsif - faqat eng asosiy foydasi (masalan, $50,000 investitsiya, to'liq grant)]</i>
    🔗 <a href="[URL]">Batafsil tanishish va ariza topshirish</a>
 
-4. Sarlavhani har kuni turlicha, zamonaviy, jiddiy va "qaynoq" uslubda yozing (Masalan: "Hayotingizni o'zgartirishga tayyormisiz? Bugungi top imkoniyatlar!"). Emojilarni minimal darajaga tushiring.
-5. Matn formatlash uchun faqat ruxsat etilgan Telegram HTML teglaridan (<b>, <i>, <a>) foydalaning.
-6. Post oxirida har safar turlicha, kuchli chaqiriq va kanal manzilini qoldiring: @Nova_Grants
+5. Sarlavhani har safar 100% turlicha, zamonaviy, jiddiy va "qaynoq" uslubda yozing. Bir xil gaplarni takrorlama. Emojilarni minimal darajaga tushiring.
+6. Matn formatlash uchun faqat ruxsat etilgan Telegram HTML teglaridan (<b>, <i>, <a>) foydalaning.
+7. Agar berilgan ro'yxatda birorta ham munosib grant bo'lmasa, post_text ni bo'sh string ("") qilib qaytar.
+8. Post oxirida har safar turlicha, kuchli chaqiriq va kanal manzilini qoldiring: @Nova_Grants
 
 Talablar (deadlines uchun):
 Har bir grant matnini o'qib, uning tugash muddati (deadline) ni toping. Agar sanani aniq bilsangiz, uni ISO 8601 formatiga o'tkazib (masalan 2026-12-31T00:00:00Z) yozing. Agar muddat ko'rsatilmagan bo'lsa null qilib qaytaring.
@@ -80,16 +82,29 @@ Har bir grant matnini o'qib, uning tugash muddati (deadline) ni toping. Agar san
             )
             result = response.text.strip()
             if result:
-                print("AI muvaffaqiyatli JSON javob qaytardi.")
+                # Tozalash: Markdown backtick larni olib tashlash
+                if result.startswith("```json"):
+                    result = result[7:]
+                elif result.startswith("```"):
+                    result = result[3:]
+                if result.endswith("```"):
+                    result = result[:-3]
+                result = result.strip()
+                
                 try:
                     data = json.loads(result)
+                    if data.get("post_text") == "":
+                        print("AI mos grant topmadi. Post qilinmaydi.")
+                        return None
                     return data
                 except Exception as e:
-                    print(f"JSON parsing xatosi: {e}")
-                    break
+                    print(f"JSON parsing xatosi: {e}. Qayta urinib ko'rilmoqda...")
+                    time.sleep(5)
+                    continue
             else:
-                print("AI bo'sh javob qaytardi.")
-                break
+                print("AI bo'sh javob qaytardi. Qayta urinish...")
+                time.sleep(5)
+                continue
                 
         except Exception as e:
             error_str = str(e)
@@ -97,23 +112,12 @@ Har bir grant matnini o'qib, uning tugash muddati (deadline) ni toping. Agar san
                 print(f"Gemini serveri band ({error_str[:50]}). {attempt + 1}-urinish xatosi. 10s kutamiz...")
                 time.sleep(10)
                 continue
+            elif "finish_reason" in error_str or "safety" in error_str.lower():
+                print(f"AI xavfsizlik filtri ishga tushdi yoki boshqa xato: {e}")
+                return None
             else:
                 print(f"AI bilan ishlashda kutilmagan xatolik: {e}")
-                break
+                return None
                 
-    print("Barcha urinishlar barbod bo'ldi. Zaxira (Fallback) shabloniga o'tilmoqda...")
-    return {"post_text": _fallback_format(grants_list), "deadlines": []}
-
-def _fallback_format(grants_list):
-    """Zaxira formatlash."""
-    fallback_text = "🔥 <b>Bugungi eng sara xalqaro grantlar!</b>\n\n"
-    fallback_text += "Salom, grant ovchilari! 👋 Bugun ham siz uchun eng qiziqarli imkoniyatlarni jamladik:\n\n"
-    for i, g in enumerate(grants_list):
-        title = g.get('title', 'Nomalum')
-        url = g.get('url', '#')
-        fallback_text += f"{i+1}. <b><a href='{url}'>{title}</a></b>\n"
-        fallback_text += f"● Batafsil ma'lumot olish uchun rasmiy saytiga kiring.\n\n"
-    
-    fallback_text += "🚀 Katta imkoniyatlar izlaganlarga ochiladi! Havolalarga kirib, saytlarni o'zingiz ham chuqurroq o'rganing!\n\n"
-    fallback_text += "@Nova_Grants"
-    return fallback_text
+    print("Barcha urinishlar barbod bo'ldi. Post qilinmaydi (qoldiriladi).")
+    return None
