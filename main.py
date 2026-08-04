@@ -88,9 +88,10 @@ def send_telegram_message(text):
 
 def publish_post(blocks, html):
     if DRY_RUN:
-        ok, detail = validate_rich_blocks(blocks)
-        mark = "✅ yaroqli" if ok else f"❌ XATO: {detail[:70]}"
-        log(f"\n┌─ QURUQ SINOV — {len(blocks)} ta rich blok, Telegram tekshiruvi: {mark}")
+        from telegram_bot import html_to_plain
+        ok, detail = validate_rich_blocks(blocks, html_to_plain(html))
+        mark = "✅ tuzilma yaroqli" if ok else f"❌ XATO: {detail[:70]}"
+        log(f"\n┌─ QURUQ SINOV — {len(blocks)} ta rich blok, tuzilma tekshiruvi: {mark}")
         log("│  HTML ko'rinishi (zaxira):")
         for line in html.split("\n"):
             log(f"│ {line}")

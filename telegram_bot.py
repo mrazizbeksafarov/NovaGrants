@@ -315,8 +315,22 @@ def _split_blocks(blocks: list, limit: int = MAX_BLOCKS_PER_MESSAGE) -> list:
     return groups
 
 
-def send_rich_message(blocks: list, target_chat_id: str = None) -> bool:
-    """Rich message yuboradi. Ishlamasa False qaytaradi (chaqiruvchi HTML ga o'tadi)."""
+def html_to_plain(html: str) -> str:
+    """HTML dan oddiy matn — rich message'ning `text` maydoni uchun."""
+    text = re.sub(r"<[^>]+>", "", html or "")
+    text = (text.replace("&amp;", "&").replace("&lt;", "<")
+                .replace("&gt;", ">").replace("&quot;", '"'))
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = None) -> bool:
+    """Rich message yuboradi. Ishlamasa False qaytaradi (chaqiruvchi HTML ga o'tadi).
+
+    `text` maydoni SHART: Telegram bloklarнинг o'zini yetarli deb hisoblamaydi va
+    "RICH_MESSAGE_CONTENT_REQUIRED" xatosini beradi. Bu chat_id=1 bilan
+    tekshirganda ko'rinmaydi — chat topilmagani uchun mazmun tekshiruvigacha
+    yetib bormaydi. Xato faqat haqiqiy yuborishda chiqadi.
+    """
     if not blocks or not BOT_TOKEN or not CHANNEL_ID:
         return False
     if not rich_messages_available():
@@ -326,7 +340,10 @@ def send_rich_message(blocks: list, target_chat_id: str = None) -> bool:
     groups = _split_blocks(blocks)
 
     for i, group in enumerate(groups, 1):
-        payload = {"chat_id": chat_id, "rich_message": {"blocks": group}}
+        rich = {"blocks": group}
+        if plain_text:
+            rich["text"] = plain_text[:API_LIMIT]
+        payload = {"chat_id": chat_id, "rich_message": rich}
 
         sent = False
         for attempt in range(MAX_SEND_RETRY):
@@ -351,19 +368,29 @@ def send_rich_message(blocks: list, target_chat_id: str = None) -> bool:
     return True
 
 
-def validate_rich_blocks(blocks: list) -> tuple:
-    """Bloklarni Telegram'da tekshiradi — HECH NARSA YUBORMASDAN.
+def validate_rich_blocks(blocks: list, plain_text: str = "") -> tuple:
+    """Bloklar TUZILISHINI tekshiradi — hech narsa yubormasdan.
 
-    Mavjud bo'lmagan chat_id=1 ga so'rov yuboriladi. Telegram maydonlarni chat
-    topishdan oldin tekshiradi, shuning uchun "chat not found" javobi sxema
-    to'g'ri ekanini bildiradi. Quruq sinovda ishlatiladi.
+    Mavjud bo'lmagan chat_id=1 ga so'rov yuboriladi va "chat not found" javobi
+    sxema to'g'ri ekanini bildiradi.
+
+    CHEKLOV: bu faqat TUZILMANI tekshiradi. Telegram mazmun tekshiruvini chat
+    topilgandan KEYIN bajaradi, shuning uchun "RICH_MESSAGE_CONTENT_REQUIRED"
+    kabi xatolar bu yerda ko'rinmaydi. Aynan shu sabab quruq sinov "yaroqli"
+    deb ko'rsatgan post haqiqiy yuborishda rad etilgan edi.
+    Shu bois publish() da HTML zaxirasi doim saqlanadi.
     """
     if not blocks or not BOT_TOKEN:
         return False, "token yoki blok yo'q"
+
+    rich = {"blocks": blocks}
+    if plain_text:
+        rich["text"] = plain_text[:API_LIMIT]
+
     try:
         resp = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendRichMessage",
-            json={"chat_id": 1, "rich_message": {"blocks": blocks}}, timeout=20)
+            json={"chat_id": 1, "rich_message": rich}, timeout=20)
         desc = resp.json().get("description", "")
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
@@ -377,7 +404,7 @@ def publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
     Ikkala ko'rinish ham post_builder.py da BIR MANBADAN quriladi, shuning uchun
     qaysi yo'l ishlashidan qat'i nazar mazmun va HAVOLALAR bir xil bo'ladi.
     """
-    if blocks and send_rich_message(blocks, target_chat_id):
+    if blocks and send_rich_message(blocks, html_to_plain(html_text), target_chat_id):
         return True
     if blocks:
         print("  Rich message ishlamadi — HTML ko'rinishga o'tilmoqda.")
