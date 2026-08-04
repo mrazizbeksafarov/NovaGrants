@@ -1,22 +1,41 @@
-name: Nova Grants Bot Schedule
+name: Nova Grants Bot
+
 on:
   schedule:
+    # Har kuni 08:00 (Toshkent) = 03:00 UTC
     - cron: '0 3 * * *'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Quruq sinov (kanalga yubormasdan tekshirish)"
+        type: boolean
+        default: false
+
+# Bir vaqtda faqat bitta yurish — takror post xavfini yo'q qiladi
+concurrency:
+  group: nova-grants-bot
+  cancel-in-progress: false
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     steps:
-      - name: Repozitoriyni yuklash (Checkout)
+      - name: Kodni yuklash
         uses: actions/checkout@v4
-      - name: Python'ni o'rnatish
+
+      - name: Python o'rnatish
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+          cache: pip
+
       - name: Kutubxonalarni o'rnatish
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
       - name: Botni ishga tushirish
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -24,5 +43,6 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: |
-          python main.py
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          PYTHONIOENCODING: utf-8
+        run: python main.py

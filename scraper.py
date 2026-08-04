@@ -1,196 +1,276 @@
+"""Manbalardan xom ma'lumot yig'ish.
+
+Bu modul FAQAT ma'lumot yig'adi va dastlabki tozalashni bajaradi.
+Asl havolani topish — link_resolver.py, saralash — filters.py ishi.
+
+Har bir yozuv quyidagi ko'rinishda qaytadi:
+    {
+      "source_id": "opportunitydesk",
+      "kind":      "aggregator",   # yoki "official"
+      "title":     "...",
+      "url":       "https://opportunitydesk.org/2026/...",   # manba havolasi
+      "direct_url": "https://official-site.org/apply",       # Telegram postidagi tashqi havola (ixtiyoriy)
+      "summary":   "...",
+    }
+"""
+
+import re
+import concurrent.futures
+
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-import re
 
-SOURCES = [
-    # 🎓 1. Global Ta'lim va Yoshlar Grantlari (Mega Baza)
-    {"type": "rss", "url": "https://www.scholars4dev.com/feed/"},
-    {"type": "rss", "url": "https://opportunitydesk.org/feed"},
-    {"type": "rss", "url": "https://www.youthop.com/feed"},
-    {"type": "rss", "url": "https://opportunitiescorners.com/feed/"},
-    {"type": "rss", "url": "https://scholarshiproar.com/feed/"},
-    {"type": "rss", "url": "https://www.wemakescholars.com/blog/feed"},
-    {"type": "rss", "url": "https://scholarshipdb.net/scholarships?q=&rss=1"},
-    {"type": "rss", "url": "https://scholarship-positions.com/feed/"},
-    {"type": "rss", "url": "https://www.advance-africa.com/advance-africa.xml"},
-    {"type": "rss", "url": "https://oyaop.com/feed/"},
-    {"type": "rss", "url": "https://opportunitiesforyouth.org/feed/"},
+from sources import enabled_sources
+from link_resolver import clean_url, url_key, is_blocked, is_aggregator, host_of
 
-    # 🌍 2. Mintaqaviy Gigantlar (Yevropa, Osiyo, Afrika, MENA)
-    {"type": "rss", "url": "https://www.opportunitiesforafricans.com/feed/"},
-    {"type": "rss", "url": "https://afterschoolafrica.com/feed/"},
-    {"type": "rss", "url": "https://www.salto-youth.net/tools/european-training-calendar/rss/"},
-    {"type": "rss", "url": "https://opportunitiescircle.com/feed/"},
-    {"type": "rss", "url": "https://www.heysuccess.com/blog/feed"},
+TIMEOUT = 25
+MAX_PER_SOURCE = 20          # bitta manbadan ko'pi bilan shuncha yangi yozuv
+SUMMARY_LIMIT = 1500
 
-    # 👑 3. Nufuzli Fellowship va Liderlik dasturlari
-    {"type": "rss", "url": "https://www.profellow.com/feed/"},
-    {"type": "rss", "url": "https://armacad.info/rss"},
-    {"type": "rss", "url": "http://www.mladiinfo.eu/feed/"},
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/rss+xml, application/xml, text/html;q=0.9, */*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
-    # 🚀 4. Startaplar, Akseleratorlar va Investitsiyalar (VC)
-    {"type": "rss", "url": "https://techcrunch.com/category/startups/feed/"},
-    {"type": "rss", "url": "https://blog.ycombinator.com/feed/"},
-    {"type": "rss", "url": "https://news.crunchbase.com/feed/"},
-    {"type": "rss", "url": "https://wellfound.com/blog/feed"},
-    {"type": "rss", "url": "https://www.eu-startups.com/feed/"},
-    {"type": "rss", "url": "https://sifted.eu/feed/"},
-    {"type": "rss", "url": "https://www.wamda.com/feed"},
-    {"type": "rss", "url": "https://disrupt-africa.com/feed/"},
-    {"type": "rss", "url": "https://e27.co/feed/"},
-    {"type": "rss", "url": "https://www.dealstreetasia.com/feed/"},
-    {"type": "rss", "url": "https://www.techinasia.com/feed"},
-    {"type": "rss", "url": "https://magazine.startus.cc/feed/"},
-    {"type": "rss", "url": "https://blog.gust.com/feed/"},
+_session = requests.Session()
+_session.headers.update(HEADERS)
 
-    # 🎨🔬 5. Maxsus Yo'nalishlar (Ayollar, San'at, Ilm-fan)
-    {"type": "rss", "url": "https://philanthropywomen.org/feed/"},
-    {"type": "rss", "url": "https://awdf.org/feed/"},
-    {"type": "rss", "url": "https://www.arts.gov/rss.xml"},
-    {"type": "rss", "url": "https://www.ukri.org/feed/"},
-    {"type": "rss", "url": "https://terravivagrants.org/feed/"},
-    {"type": "rss", "url": "https://www.grants.gov/rss/GG_OppModByCategory.xml"},
 
-    # 🤝 6. Ijtimoiy Loyihalar va NGO Grantlari
-    {"type": "rss", "url": "https://www.fundsforngos.org/feed/"},
-    {"type": "rss", "url": "https://www.grants.gov/rss"},
-    {"type": "rss", "url": "https://www.devex.com/news/rss"},
-
-    # 🇺🇿 Mahalliy RSS (O'zbekiston)
-    {"type": "rss", "url": "https://grantlar.uz/feed/"},
-
-    # 📱 Mahalliy Telegram Kanallari (Startap va Ta'lim)
-    {"type": "telegram", "channel": "edugrandsuz"},
-    {"type": "telegram", "channel": "grantlar"},
-    {"type": "telegram", "channel": "erasmus_uz"},
-    {"type": "telegram", "channel": "grantsuzb"},
-    {"type": "telegram", "channel": "startupbaseuz"},
-    {"type": "telegram", "channel": "itpark_uz"},
-    {"type": "telegram", "channel": "yoshlaragentligi"},
-    {"type": "telegram", "channel": "uzvc_uz"},
-    {"type": "telegram", "channel": "aloqaventures"},
-    {"type": "telegram", "channel": "startupmix"},
-    {"type": "telegram", "channel": "udevs_news"},
-    {"type": "telegram", "channel": "udevs_jobs"},
-
-    # 🌐 Yangi Global RSS Manbalar (Tech/VC)
-    {"type": "rss", "url": "https://techcrunch.com/funding/feed/"},
-    {"type": "rss", "url": "https://new.nsf.gov/rss"},
-    {"type": "rss", "url": "http://firstround.com/review/feed.xml"},
-    {"type": "rss", "url": "http://vccafe.com/feed/"},
-    {"type": "rss", "url": "https://news.ycombinator.com/rss"},
-
-    # 🌐 Yangi Global Telegram Kanallar
-    {"type": "telegram", "channel": "theglobalscholarship"},
-    {"type": "telegram", "channel": "opportunitiescorners"},
-    {"type": "telegram", "channel": "startups"},
-    {"type": "telegram", "channel": "solofounders"}
-]
-
-def scrape_rss(url):
-    grants = []
+def _clean_html(raw: str) -> str:
+    """HTML teglarni olib tashlab, toza matn qaytaradi."""
+    if not raw:
+        return ""
     try:
-        feed = feedparser.parse(url)
-        # Oxirgi 20 ta eng yangi grantlarni olamiz
-        for entry in feed.entries[:20]:
-            grant_id = entry.get("id", entry.get("link"))
-            title = entry.get("title", "")
-            link = entry.get("link", "")
-            summary = entry.get("summary", "")
-            
-            # HTML teglarni tozalash (agar kerak bo'lsa)
-            clean_summary = BeautifulSoup(summary, "html.parser").get_text(separator="\n").strip() if summary else title
-            
-            grants.append({
-                "id": grant_id,
-                "title": title,
-                "url": link,
-                "summary": clean_summary[:1000] # Maksimal 1000 belgi
-            })
-    except Exception as e:
-        print(f"RSS xatolik ({url}): {e}")
-    return grants
+        text = BeautifulSoup(raw, "html.parser").get_text(separator="\n")
+    except Exception:
+        text = re.sub(r"<[^>]+>", " ", raw)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
 
-def scrape_telegram(channel_username):
-    grants = []
-    url = f"https://t.me/s/{channel_username}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    
+
+# ──────────────────────────────────────────────────────────────────────
+# RSS
+# ──────────────────────────────────────────────────────────────────────
+def scrape_rss(src):
+    out = []
     try:
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.text, 'html.parser')
-            # Telegram post xabarlarini topamiz
-            messages = soup.find_all('div', class_='tgme_widget_message_text')
-            dates = soup.find_all('a', class_='tgme_widget_message_date')
-            
-            # Eng oxirgi 20 ta postni olamiz
-            for msg, date_tag in zip(messages[-20:], dates[-20:]):
-                msg_text = msg.get_text(separator="\n", strip=True)
-                
-                # Agar post juda qisqa bo'lsa, uni o'tkazib yuboramiz (faqat rasm bo'lishi mumkin)
-                if len(msg_text) < 50:
-                    continue
-                
-                # Post ID va Linkni olish
-                post_link = date_tag.get("href") if date_tag else f"https://t.me/{channel_username}"
-                post_id = post_link
-                
-                # Sarlavhani ajratib olish (birinchi qator yoki birinchi 50 belgi)
-                lines = msg_text.split('\n')
-                title = lines[0] if len(lines) > 0 else "Kanal yangiligi"
-                if len(title) > 80:
-                    title = title[:77] + "..."
-                
-                grants.append({
-                    "id": post_id,
-                    "title": f"[{channel_username}] {title}",
-                    "url": post_link,
-                    "summary": msg_text[:1000]
-                })
+        resp = _session.get(src["url"], timeout=TIMEOUT)
+        if resp.status_code != 200:
+            print(f"  [{src['id']}] HTTP {resp.status_code}")
+            return out
+        feed = feedparser.parse(resp.content)
     except Exception as e:
-        print(f"Telegram Web xatolik ({channel_username}): {e}")
-    
-    return grants
+        print(f"  [{src['id']}] xatolik: {type(e).__name__}")
+        return out
 
-def fetch_single_source(source):
-    if source["type"] == "rss":
-        return scrape_rss(source["url"])
-    elif source["type"] == "telegram":
-        return scrape_telegram(source["channel"])
-    return []
+    if not feed.entries:
+        print(f"  [{src['id']}] feed bo'sh")
+        return out
 
-def fetch_grants():
-    all_grants = []
-    print(f"Ma'lumotlar yig'ilmoqda... Jami manbalar: {len(SOURCES)}")
-    
-    import concurrent.futures
-    # 10 ta parallel oqimda (thread) ishlatish
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_source = {executor.submit(fetch_single_source, src): src for src in SOURCES}
-        
-        for future in concurrent.futures.as_completed(future_to_source):
-            src = future_to_source[future]
+    for entry in feed.entries[:MAX_PER_SOURCE]:
+        link = clean_url(entry.get("link", ""))
+        if not link:
+            continue
+        summary = entry.get("summary") or entry.get("description") or ""
+        # to'liq matn bo'lsa (content:encoded) — undan foydalanamiz, deadline shu yerda bo'ladi
+        if entry.get("content"):
             try:
-                data = future.result()
-                if data:
-                    all_grants.extend(data)
-            except Exception as exc:
-                name = src.get('url') or src.get('channel')
-                print(f"{name} manbasini o'qishda kutilmagan xatolik: {exc}")
-                
-    return all_grants
+                summary = entry["content"][0].get("value", summary)
+            except Exception:
+                pass
+        out.append({
+            "source_id": src["id"],
+            "kind": src["kind"],
+            "topic": src.get("topic", ""),
+            "title": _clean_html(entry.get("title", "")).strip(),
+            "url": link,
+            "summary": _clean_html(summary)[:SUMMARY_LIMIT],
+        })
+
+    print(f"  [{src['id']}] {len(out)} ta yozuv")
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Telegram (ochiq web preview: t.me/s/<kanal>)
+# ──────────────────────────────────────────────────────────────────────
+# Emoji, ko'rinmas belgilar va bezak chiziqlari — sarlavha boshidan tozalanadi
+_DECOR = re.compile(
+    r"^[\s​-‏⁠﻿ "
+    r"\U0001F000-\U0001FAFF←-⯿☀-➿️⃣•▪▫◾◽●○*_\-—–=~#>»›|]+"
+)
+
+
+def _telegram_title(text: str) -> str:
+    """Post matnidan mazmunli sarlavha ajratadi.
+
+    Telegram postlari ko'pincha emoji bilan boshlanadi ("💡", "🎓 ---") — oddiy
+    "birinchi qator" qoidasi bunday hollarda BO'SH sarlavha beradi va yozuv
+    keyinchalik filtrda tushib qoladi. Shuning uchun mazmunli birinchi qatorni
+    qidiramiz.
+    """
+    for raw in text.split("\n"):
+        line = _DECOR.sub("", raw).strip()
+        line = re.sub(r"\s+", " ", line)
+        if len(re.findall(r"\w", line)) >= 12:        # mazmunli qator
+            if len(line) > 110:
+                line = line[:107].rsplit(" ", 1)[0] + "..."
+            return line
+
+    # Mazmunli qator topilmadi — butun matndan boshini olamiz
+    flat = re.sub(r"\s+", " ", _DECOR.sub("", text)).strip()
+    return (flat[:107].rsplit(" ", 1)[0] + "...") if len(flat) > 110 else (flat or "Imkoniyat")
+def scrape_telegram(src):
+    ch = src["channel"]
+    out = []
+    try:
+        resp = _session.get(f"https://t.me/s/{ch}", timeout=TIMEOUT)
+        if resp.status_code != 200:
+            print(f"  [{src['id']}] HTTP {resp.status_code}")
+            return out
+        soup = BeautifulSoup(resp.text, "html.parser")
+    except Exception as e:
+        print(f"  [{src['id']}] xatolik: {type(e).__name__}")
+        return out
+
+    wrappers = soup.find_all("div", class_="tgme_widget_message")
+    for wrap in wrappers[-MAX_PER_SOURCE:]:
+        body = wrap.find("div", class_="tgme_widget_message_text")
+        if not body:
+            continue
+        text = body.get_text(separator="\n", strip=True)
+        if len(text) < 60:                       # juda qisqa post — foydasiz
+            continue
+
+        date_tag = wrap.find("a", class_="tgme_widget_message_date")
+        post_link = date_tag.get("href") if date_tag else f"https://t.me/{ch}"
+
+        # Post ichidagi TASHQI havola — aynan shu grantning asl manzili bo'lishi mumkin
+        direct = ""
+        for a in body.find_all("a", href=True):
+            href = a["href"].strip()
+            if not href.lower().startswith("http"):
+                continue
+            if is_blocked(href) or is_aggregator(href):
+                continue
+            if host_of(href) in ("t.me", "telegram.me"):
+                continue
+            direct = clean_url(href)
+            if direct:
+                break
+
+        title = _telegram_title(text)
+
+        out.append({
+            "source_id": src["id"],
+            "kind": src["kind"],
+            "topic": src.get("topic", ""),
+            "title": title,
+            "url": post_link,
+            "direct_url": direct,
+            "summary": text[:SUMMARY_LIMIT],
+        })
+
+    print(f"  [{src['id']}] {len(out)} ta post")
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────
+# grants.gov rasmiy API
+# ──────────────────────────────────────────────────────────────────────
+def scrape_grantsgov(src):
+    out = []
+    try:
+        resp = _session.post(
+            src["url"],
+            json={"rows": 50, "keyword": "", "oppStatuses": "posted"},
+            headers={"Content-Type": "application/json"},
+            timeout=TIMEOUT,
+        )
+        hits = resp.json().get("data", {}).get("oppHits", [])
+    except Exception as e:
+        print(f"  [{src['id']}] xatolik: {type(e).__name__}")
+        return out
+
+    for h in hits:
+        opp_id = h.get("id")
+        if not opp_id:
+            continue
+        close = h.get("closeDate", "")
+        out.append({
+            "source_id": src["id"],
+            "kind": src["kind"],
+            "topic": src.get("topic", ""),
+            "title": h.get("title", "").strip(),
+            "url": f"https://grants.gov/search-results-detail/{opp_id}",
+            "summary": f"{h.get('agencyName', '')}. Opportunity number: {h.get('number', '')}. "
+                       f"Deadline: {close}." if close else h.get("agencyName", ""),
+        })
+
+    print(f"  [{src['id']}] {len(out)} ta imkoniyat")
+    return out
+
+
+_ADAPTERS = {
+    "rss": scrape_rss,
+    "telegram": scrape_telegram,
+    "grantsgov": scrape_grantsgov,
+}
+
+
+def _fetch_one(src):
+    fn = _ADAPTERS.get(src["type"])
+    if not fn:
+        return []
+    try:
+        return fn(src)
+    except Exception as e:
+        print(f"  [{src['id']}] kutilmagan xatolik: {type(e).__name__}: {e}")
+        return []
+
+
+def fetch_all():
+    """Barcha faol manbalardan yig'ib, manba havolasi bo'yicha takrorlarni tashlaydi."""
+    srcs = enabled_sources()
+    print(f"Ma'lumot yig'ilmoqda — {len(srcs)} ta manba...")
+
+    collected = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        for batch in ex.map(_fetch_one, srcs):
+            collected.extend(batch)
+
+    # Bir yurish ichidagi takrorlar (bir maqola ikki feed'da chiqishi mumkin)
+    seen = set()
+    unique = []
+    for item in collected:
+        key = url_key(item["url"])
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        item["source_key"] = key
+        unique.append(item)
+
+    print(f"Jami: {len(collected)} ta yozuv, takrorlar tozalangach: {len(unique)} ta")
+    return unique
+
 
 if __name__ == "__main__":
     import sys
-    sys.stdout.reconfigure(encoding='utf-8')
-    grants = fetch_grants()
-    print(f"\nJami topilgan ma'lumotlar soni: {len(grants)}\n")
-    if grants:
-        print("Namuna (1-grant):")
-        print(f"Sarlavha: {grants[-1]['title']}")
-        print(f"Havola: {grants[-1]['url']}")
-        print(f"Qisqacha: {grants[-1]['summary'][:100]}...")
+    from collections import Counter
+    sys.stdout.reconfigure(encoding="utf-8")
+
+    items = fetch_all()
+    print("\nManbalar bo'yicha:")
+    for sid, n in Counter(i["source_id"] for i in items).most_common():
+        print(f"  {sid:<24} {n}")
+    if items:
+        print("\nNamuna:")
+        for it in items[:3]:
+            print(f"  [{it['source_id']}] {it['title'][:70]}")
+            print(f"     {it['url']}")

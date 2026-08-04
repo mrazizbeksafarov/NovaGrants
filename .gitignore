@@ -1,0 +1,25 @@
+# ⚠️ Maxfiy — hech qachon GitHub'ga tushmasin
+.env
+.env.local
+*.session
+*.session-journal
+
+# Virtual muhit va Python keshi
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Ish faylllari
+post_output.txt
+sample_post.txt
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
