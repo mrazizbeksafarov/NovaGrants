@@ -20,6 +20,9 @@ sample_post.txt
 .DS_Store
 Thumbs.db
 
+# Mahalliy yordamchi skript (ichida shaxsiy yo'l bor)
+push_to_github.ps1
+
 # IDE
 .vscode/
 .idea/
