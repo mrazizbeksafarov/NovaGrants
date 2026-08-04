@@ -303,23 +303,28 @@ def _article_root(soup: BeautifulSoup):
     return soup.body or soup
 
 
-def find_original_link(article_url: str) -> str:
-    """Aggregator maqolasidan grantning rasmiy havolasini topadi. Topilmasa ""."""
+def find_original_link(article_url: str) -> tuple:
+    """Aggregator maqolasidan grantning rasmiy havolasini topadi.
+
+    Qaytaradi: (havola, anchor_bahosi). Topilmasa ("", 0).
+    Baho keyinchalik link_matches_title() da ishlatiladi — kuchli anchor
+    ("Apply now", "Rasmiy veb-sayt") so'z mosligi talabini bekor qiladi.
+    """
     resp = _get(article_url)
     if resp is None or resp.status_code != 200:
         code = resp.status_code if resp is not None else "ulanmadi"
         print(f"    ! {host_of(article_url)} javob bermadi ({code})")
-        return ""
+        return "", 0
 
     try:
         soup = BeautifulSoup(resp.text, "html.parser")
     except Exception:
-        return ""
+        return "", 0
 
     root = _article_root(soup)
     anchors = root.find_all("a", href=True)
     if not anchors:
-        return ""
+        return "", 0
 
     source_host = host_of(article_url)
     external, internal_redirects = [], []
@@ -363,9 +368,9 @@ def find_original_link(article_url: str) -> str:
                 continue
             if host_of(final) == source_host:
                 continue
-            return clean_url(final)
+            return clean_url(final), score
 
-    return ""
+    return "", 0
 
 
 # Sarlavha bilan havola mosligini tekshirishda e'tiborga olinmaydigan so'zlar
@@ -385,36 +390,46 @@ _TOPIC_WORDS = ("phd", "postdoc", "intern", "internship", "fellow", "fellowship"
                 "incubator", "vacanc", "career", "job", "admission", "apply")
 
 
-def link_matches_title(title: str, url: str) -> tuple:
+STRONG_ANCHOR_SCORE = 30    # "Apply now", "Official website", "Rasmiy veb-sayt" darajasi
+
+
+def link_matches_title(title: str, url: str, anchor_score: int = 0) -> tuple:
     """Havola sarlavhaga mos keladimi? Qaytaradi: (mos_keladi, sabab).
 
     Ikkita aniq nosozlikni ushlaydi (ikkalasi ham jonli kanalda sodir bo'lgan):
       • bosh sahifaga havola — "Ariza topshirish" bosh sahifaga olib borsa foydasiz
-        (masalan "Amaliyot Ofisi" -> yoshlar.gov.uz/)
-      • butunlay boshqa saytga havola — aggregator maqolasidagi begona havola
-        tanlangan bo'lsa (masalan "CoCreate Pitch" -> accio.com/work/installGuide)
+        ("Amaliyot Ofisi" -> yoshlar.gov.uz/)
+      • butunlay boshqa saytga havola — maqoladagi begona havola tanlangan bo'lsa
+        ("CoCreate Pitch" -> accio.com/work/installGuide)
+
+    MUHIM: sarlavha o'zbekcha yoki ruscha bo'lsa, inglizcha URL bilan so'z mosligi
+    bo'lmaydi (masalan "Incubation Program" -> awards.gov.uz/en/pta). Shuning uchun
+    havola KUCHLI anchor matnidan olingan bo'lsa ("Ariza topshirish", "Apply now"),
+    so'z mosligi talab qilinmaydi — anchor matnining o'zi yetarli dalil.
     """
     if not url:
         return False, "havola yo'q"
 
-    parsed = urlparse(url)
-    path = (parsed.path or "").strip("/")
-
-    if not path:
-        return False, "bosh sahifa (aniq ariza sahifasi emas)"
-
-    blob = f"{host_of(url)}/{path}".lower()
+    path = (urlparse(url).path or "").strip("/")
+    host = host_of(url)
+    blob = f"{host}/{path}".lower()
 
     tokens = {t for t in re.findall(r"[a-z0-9]{4,}", (title or "").lower())
               if t not in _TITLE_NOISE}
 
-    if not tokens:
-        return True, ""                          # sarlavha juda umumiy — baholay olmaymiz
+    token_hit = any(t in blob for t in tokens)
+    strong = anchor_score >= STRONG_ANCHOR_SCORE
 
-    if any(t in blob for t in tokens):
+    if not path:
+        # Bosh sahifa. Faqat domen nomining o'zi sarlavhaga mos kelsa qabul qilamiz
+        # (masalan "Green Talents Award" -> greentalents.de).
+        if token_hit:
+            return True, ""
+        return False, "bosh sahifa (aniq ariza sahifasi emas)"
+
+    if not tokens or token_hit or strong:
         return True, ""
 
-    # Sarlavhada ham, URL yo'lida ham bir xil mavzu so'zi bo'lsa — yetarli
     low_title = (title or "").lower()
     if any(w in low_title and w in blob for w in _TOPIC_WORDS):
         return True, ""
@@ -435,9 +450,9 @@ def resolve_grant(grant: dict) -> dict:
     grant["url_key"] = ""
     title = grant.get("title", "")
 
-    def accept(final_url):
+    def accept(final_url, anchor_score=0):
         """Havolani qabul qilishdan oldin sarlavhaga mosligini tekshiradi."""
-        ok, reason = link_matches_title(title, final_url)
+        ok, reason = link_matches_title(title, final_url, anchor_score)
         if not ok:
             print(f"    ! havola rad etildi ({reason}): {final_url[:70]}")
             return False
@@ -469,17 +484,19 @@ def resolve_grant(grant: dict) -> dict:
         final = follow_redirects(start) if from_telegram else start
         if is_blocked(final) or host_of(final) in ("t.me", "telegram.me"):
             return grant
-        accept(clean_url(final) or start)
+        # Telegram postidagi tashqi havolani muallif o'zi qo'ygan — kuchli dalil
+        accept(clean_url(final) or start,
+               anchor_score=STRONG_ANCHOR_SCORE if from_telegram else 0)
         return grant
 
     # Aggregator — ichidan qazib olamiz (kerak bo'lsa bir necha bosqichda)
     current = start
     for _ in range(MAX_HOPS):
-        found = find_original_link(current)
+        found, score = find_original_link(current)
         if not found:
             return grant
         if not is_aggregator(found):
-            accept(found)
+            accept(found, anchor_score=score)
             return grant
         current = found                           # yana aggregator — chuqurroq qazamiz
 
@@ -490,6 +507,7 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
     for t in sys.argv[1:]:
+        found, score = find_original_link(t)
         print(f"\n{t}")
         print(f"  kalit : {url_key(t)}")
-        print(f"  asl   : {find_original_link(t) or '(topilmadi)'}")
+        print(f"  asl   : {found or '(topilmadi)'}  (anchor bahosi: {score})")
