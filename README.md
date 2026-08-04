@@ -105,22 +105,42 @@ Qo'lda ishga tushirish: Actions → Nova Grants Bot → Run workflow
 
 ### Telegram rich messages
 
-Bot API 10.1+ (2026-yil iyun) "rich messages" qo'shdi. Sxema rasmiy hujjatda
-to'liq ochiq emas, shuning uchun u **jonli API'dan aniqlangan**
-(`tools/probe_rich_schema2.py` — mavjud bo'lmagan `chat_id=1` ga so'rov yuborib,
-xato matnlaridan sxemani tiklaydi; hech narsa yuborilmaydi):
+Bot API 10.1+ (2026-yil iyun) "rich messages" qo'shdi. Botda **hech narsa
+yoqish shart emas** — BotFather sozlamasi ham, obuna ham kerak emas. Faqat
+media bloklari uchun botda o'sha chatga media yuborish huquqi talab qilinadi
+(bizda media yo'q).
 
-| Element | Tuzilishi | Eslatma |
-|---|---|---|
-| `heading` | `{"size": 2, "text": ...}` | `size` — **raqam**, satr emas |
-| `list` | `{"items": [{"text": ...}]}` | oddiy satrlar qabul qilinmaydi |
-| `details` | `{"header": ..., "blocks": [...], "is_open": false}` | yig'iladigan bo'lim |
-| `paragraph` | `{"text": satr \| obyekt \| massiv}` | aralash matn mumkin |
-| havola | `{"type": "url", "url": ..., "text": ...}` | |
-| `divider`, `footer` | — | |
+Maydon nomlari **faqat rasmiy hujjatdan** olinadi (`InputRichBlock*`):
 
-Xabar uzunligi ham o'lchandi: **32 768 belgi** (ilgari 4096). Mijozlar ~8000
-belgidan keyin "Show more" tugmasini ko'rsatadi.
+| Blok | Tuzilishi |
+|---|---|
+| `heading` | `{"type","text","size"}` — size 1–6, **1 eng katta** |
+| `paragraph` / `footer` | `{"type","text"}` |
+| `divider` | `{"type"}` |
+| `list` | `{"type","items"}`, item: `{"blocks":[...]}` |
+| `details` | `{"type","summary","blocks"}` + ixtiyoriy `is_open: true` |
+| havola | `{"type":"url","url":...,"text":...}` |
+
+`InputRichMessage` da `html`, `markdown` yoki `blocks` dan **aynan bittasi**
+bo'lishi kerak. `text` degan maydon yo'q.
+
+> ⚠️ **Jonli API'ni "probe" qilib sxema aniqlash CHALG'ITADI.** Telegram
+> noma'lum maydonlarni parse bosqichida rad etmaydi va mazmun tekshiruvini chat
+> topilgandan keyin bajaradi. Shuning uchun `{"header": ...}` (to'g'risi
+> `summary`) va `items: [{"text": ...}]` (to'g'risi `{"blocks": [...]}`) —
+> ikkalasi ham `chat_id=1` bilan "yaroqli" ko'rindi, lekin haqiqiy kanalda
+> `RICH_MESSAGE_CONTENT_REQUIRED` xatosini berdi.
+>
+> Shu sabab `tools/check_rich_spec.py` yozildi — u bloklarni hujjat sxemasiga
+> solishtiradi. Blok tuzilishini o'zgartirsangiz, avval shuni ishga tushiring.
+
+Cheklovlar (hujjatdan): **32 768 belgi**, **500 blok** (ichkilari bilan),
+16 daraja ichma-ichlik, 50 media, jadvalda 20 ustun. Mijozlar ~8000 belgidan
+keyin "Show more" tugmasini ko'rsatadi.
+
+Rich message ishlamasa, `publish()` avtomatik HTML ko'rinishga o'tadi —
+ikkalasi ham `post_builder.py` da bir manbadan quriladi, shuning uchun mazmun
+va havolalar bir xil bo'ladi.
 
 ---
 

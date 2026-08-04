@@ -326,10 +326,9 @@ def html_to_plain(html: str) -> str:
 def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = None) -> bool:
     """Rich message yuboradi. Ishlamasa False qaytaradi (chaqiruvchi HTML ga o'tadi).
 
-    `text` maydoni SHART: Telegram bloklarнинг o'zini yetarli deb hisoblamaydi va
-    "RICH_MESSAGE_CONTENT_REQUIRED" xatosini beradi. Bu chat_id=1 bilan
-    tekshirganda ko'rinmaydi — chat topilmagani uchun mazmun tekshiruvigacha
-    yetib bormaydi. Xato faqat haqiqiy yuborishda chiqadi.
+    InputRichMessage da `html`, `markdown` yoki `blocks` dan AYNAN BITTASI
+    bo'lishi kerak (rasmiy hujjat). `text` degan maydon yo'q — shuning uchun
+    bu yerda faqat `blocks` yuboriladi. `plain_text` faqat log uchun.
     """
     if not blocks or not BOT_TOKEN or not CHANNEL_ID:
         return False
@@ -340,10 +339,7 @@ def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = 
     groups = _split_blocks(blocks)
 
     for i, group in enumerate(groups, 1):
-        rich = {"blocks": group}
-        if plain_text:
-            rich["text"] = plain_text[:API_LIMIT]
-        payload = {"chat_id": chat_id, "rich_message": rich}
+        payload = {"chat_id": chat_id, "rich_message": {"blocks": group}}
 
         sent = False
         for attempt in range(MAX_SEND_RETRY):
@@ -374,23 +370,21 @@ def validate_rich_blocks(blocks: list, plain_text: str = "") -> tuple:
     Mavjud bo'lmagan chat_id=1 ga so'rov yuboriladi va "chat not found" javobi
     sxema to'g'ri ekanini bildiradi.
 
-    CHEKLOV: bu faqat TUZILMANI tekshiradi. Telegram mazmun tekshiruvini chat
-    topilgandan KEYIN bajaradi, shuning uchun "RICH_MESSAGE_CONTENT_REQUIRED"
-    kabi xatolar bu yerda ko'rinmaydi. Aynan shu sabab quruq sinov "yaroqli"
-    deb ko'rsatgan post haqiqiy yuborishda rad etilgan edi.
+    CHEKLOV — BUNGA TO'LIQ ISHONMANG. Telegram noma'lum maydonlarni parse
+    bosqichida rad etmaydi va mazmun tekshiruvini chat topilgandan KEYIN
+    bajaradi. Ya'ni {"header": ...} kabi noto'g'ri maydon nomi ham shu yerda
+    "yaroqli" ko'rinadi, lekin haqiqiy yuborishda
+    RICH_MESSAGE_CONTENT_REQUIRED bo'lib chiqadi.
+    Maydon nomlari faqat rasmiy hujjatdan olinishi kerak.
     Shu bois publish() da HTML zaxirasi doim saqlanadi.
     """
     if not blocks or not BOT_TOKEN:
         return False, "token yoki blok yo'q"
 
-    rich = {"blocks": blocks}
-    if plain_text:
-        rich["text"] = plain_text[:API_LIMIT]
-
     try:
         resp = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendRichMessage",
-            json={"chat_id": 1, "rich_message": rich}, timeout=20)
+            json={"chat_id": 1, "rich_message": {"blocks": blocks}}, timeout=20)
         desc = resp.json().get("description", "")
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"

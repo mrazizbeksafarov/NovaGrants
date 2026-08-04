@@ -124,11 +124,12 @@ def send_reminders():
         {"type": "paragraph",
          "text": "Quyidagi imkoniyatlar uchun hujjat topshirish muddati tugayapti."},
         {"type": "divider"},
+        # Har bir element InputRichBlockListItem: ichida `blocks` bo'ladi
         {"type": "list", "items": [
-            {"text": [
+            {"blocks": [{"type": "paragraph", "text": [
                 {"type": "url", "url": g["url"], "text": str(g["title"])[:120]},
                 f" — {_deadline_label(g.get('deadline'))}",
-            ]} for g in valid
+            ]}]} for g in valid
         ]},
         {"type": "paragraph", "text": "Kechikkan ariza qabul qilinmaydi."},
         {"type": "footer", "text": CHANNEL_TAG},

@@ -10,12 +10,21 @@ AI faqat matn yozadi (nom, tavsif, foydalar). HAVOLANI BIZ QO'YAMIZ — o'zimizd
 saqlanган asl URL dan. Shu sabab AI havolani o'ylab topishi yoki o'zgartirishi
 texnik jihatdan mumkin emas.
 
-Sxema jonli API'dan aniqlangan (tools/probe_rich_schema2.py):
-  heading.size   — RAQAM (1, 2, 3), satr emas
-  list.items     — obyektlar massivi: [{"text": ...}], oddiy satrlar emas
-  details        — {"header": ..., "blocks": [...], "is_open": bool}
-  paragraph.text — satr | rich obyekt | ikkalasining massivi
-  url rich text  — {"type": "url", "url": ..., "text": ...}
+Sxema RASMIY HUJJATDAN olingan (core.telegram.org/bots/api, InputRichBlock*):
+  heading   — {"type": "heading", "text": RichText, "size": 1-6}  (1 eng katta)
+  paragraph — {"type": "paragraph", "text": RichText}
+  footer    — {"type": "footer", "text": RichText}
+  divider   — {"type": "divider"}
+  list      — {"type": "list", "items": [InputRichBlockListItem]}
+              har bir item: {"blocks": [InputRichBlock]}
+  details   — {"type": "details", "summary": RichText, "blocks": [...], "is_open": bool}
+  RichText  — satr | RichText massivi | {"type": "bold"|"url"|..., "text": ...}
+
+DIQQAT — jonli API'ni "probe" qilish bu yerda CHALG'ITADI. Telegram noma'lum
+maydonlarni parse bosqichida rad etmaydi, shuning uchun {"header": ...} yoki
+{"items": [{"text": ...}]} kabi noto'g'ri shakllar ham "to'g'ri" ko'rinadi.
+Xato faqat haqiqiy yuborishda RICH_MESSAGE_CONTENT_REQUIRED bo'lib chiqadi.
+Shuning uchun maydon nomlari faqat hujjatdan olinadi.
 """
 
 import re
@@ -77,8 +86,11 @@ def build_rich_blocks(headline: str, cards: list) -> list:
         inner = []
         benefits = [b for b in (card.get("benefits") or []) if str(b).strip()][:5]
         if benefits:
-            inner.append({"type": "list",
-                          "items": [{"text": _clean(b, 160)} for b in benefits]})
+            # Har bir list elementi InputRichBlockListItem: ichida `blocks` bo'ladi
+            inner.append({"type": "list", "items": [
+                {"blocks": [{"type": "paragraph", "text": _clean(b, 160)}]}
+                for b in benefits
+            ]})
 
         eligibility = _clean(card.get("eligibility"), 240)
         if eligibility:
@@ -91,8 +103,11 @@ def build_rich_blocks(headline: str, cards: list) -> list:
                           "text": [{"type": "bold", "text": "Oxirgi muddat: "}, deadline]})
 
         if inner:
-            blocks.append({"type": "details", "header": "To'liq ma'lumot",
-                           "is_open": False, "blocks": inner})
+            # `summary` majburiy (hujjatda Optional emas) — `header` degan maydon yo'q.
+            # `is_open` turi hujjatda "True", ya'ni faqat True uzatiladi. Bizga
+            # yig'ilgan holat kerak, shuning uchun maydonni umuman qo'shmaymiz.
+            blocks.append({"type": "details", "summary": "To'liq ma'lumot",
+                           "blocks": inner})
 
         blocks.append({"type": "paragraph",
                        "text": [{"type": "url", "url": url, "text": CTA}]})
