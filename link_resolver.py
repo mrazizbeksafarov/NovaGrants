@@ -368,6 +368,60 @@ def find_original_link(article_url: str) -> str:
     return ""
 
 
+# Sarlavha bilan havola mosligini tekshirishda e'tiborga olinmaydigan so'zlar
+_TITLE_NOISE = {
+    "the", "and", "for", "with", "from", "fully", "funded", "full", "free",
+    "scholarship", "scholarships", "program", "programme", "programs", "positions",
+    "position", "university", "college", "international", "students", "student",
+    "opportunity", "opportunities", "apply", "application", "applications", "open",
+    "now", "call", "grant", "grants", "award", "awards", "study", "abroad",
+    "uchun", "yangi", "dastur", "talabalar", "imkoniyat", "boshlandi", "qabul",
+}
+
+# Sarlavha va URL yo'lida uchrashi mumkin bo'lgan mavzu so'zlari (qisqa bo'lsa ham)
+_TOPIC_WORDS = ("phd", "postdoc", "intern", "internship", "fellow", "fellowship",
+                "scholarship", "grant", "master", "bachelor", "summer", "exchange",
+                "residency", "award", "contest", "competition", "accelerator",
+                "incubator", "vacanc", "career", "job", "admission", "apply")
+
+
+def link_matches_title(title: str, url: str) -> tuple:
+    """Havola sarlavhaga mos keladimi? Qaytaradi: (mos_keladi, sabab).
+
+    Ikkita aniq nosozlikni ushlaydi (ikkalasi ham jonli kanalda sodir bo'lgan):
+      • bosh sahifaga havola — "Ariza topshirish" bosh sahifaga olib borsa foydasiz
+        (masalan "Amaliyot Ofisi" -> yoshlar.gov.uz/)
+      • butunlay boshqa saytga havola — aggregator maqolasidagi begona havola
+        tanlangan bo'lsa (masalan "CoCreate Pitch" -> accio.com/work/installGuide)
+    """
+    if not url:
+        return False, "havola yo'q"
+
+    parsed = urlparse(url)
+    path = (parsed.path or "").strip("/")
+
+    if not path:
+        return False, "bosh sahifa (aniq ariza sahifasi emas)"
+
+    blob = f"{host_of(url)}/{path}".lower()
+
+    tokens = {t for t in re.findall(r"[a-z0-9]{4,}", (title or "").lower())
+              if t not in _TITLE_NOISE}
+
+    if not tokens:
+        return True, ""                          # sarlavha juda umumiy — baholay olmaymiz
+
+    if any(t in blob for t in tokens):
+        return True, ""
+
+    # Sarlavhada ham, URL yo'lida ham bir xil mavzu so'zi bo'lsa — yetarli
+    low_title = (title or "").lower()
+    if any(w in low_title and w in blob for w in _TOPIC_WORDS):
+        return True, ""
+
+    return False, "sarlavha bilan bog'liq emas"
+
+
 def resolve_grant(grant: dict) -> dict:
     """Bitta yozuv uchun asl havolani aniqlaydi.
 
@@ -379,6 +433,17 @@ def resolve_grant(grant: dict) -> dict:
     grant["fingerprint"] = title_fingerprint(grant.get("title", ""))
     grant["url"] = ""
     grant["url_key"] = ""
+    title = grant.get("title", "")
+
+    def accept(final_url):
+        """Havolani qabul qilishdan oldin sarlavhaga mosligini tekshiradi."""
+        ok, reason = link_matches_title(title, final_url)
+        if not ok:
+            print(f"    ! havola rad etildi ({reason}): {final_url[:70]}")
+            return False
+        grant["url"] = final_url
+        grant["url_key"] = url_key(final_url)
+        return True
 
     if not source_url:
         return grant
@@ -404,8 +469,7 @@ def resolve_grant(grant: dict) -> dict:
         final = follow_redirects(start) if from_telegram else start
         if is_blocked(final) or host_of(final) in ("t.me", "telegram.me"):
             return grant
-        grant["url"] = clean_url(final) or start
-        grant["url_key"] = url_key(grant["url"])
+        accept(clean_url(final) or start)
         return grant
 
     # Aggregator — ichidan qazib olamiz (kerak bo'lsa bir necha bosqichda)
@@ -415,8 +479,7 @@ def resolve_grant(grant: dict) -> dict:
         if not found:
             return grant
         if not is_aggregator(found):
-            grant["url"] = found
-            grant["url_key"] = url_key(found)
+            accept(found)
             return grant
         current = found                           # yana aggregator — chuqurroq qazamiz
 

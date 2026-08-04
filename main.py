@@ -20,7 +20,9 @@ import concurrent.futures
 from datetime import datetime, timezone
 
 from scraper import fetch_all
-from filters import looks_like_opportunity, extract_deadline, deadline_passed
+from filters import (
+    looks_like_opportunity, extract_deadline, deadline_passed, validate_deadline_iso,
+)
 from link_resolver import resolve_grant, is_aggregator
 from database import (
     init_db, get_seen_source_keys, get_seen_url_keys, get_seen_fingerprints,
@@ -293,7 +295,10 @@ def publish(items):
         for g in batch:
             card = chosen.get(g["url"])
             if card:
-                save_grant(g, deadline_iso=card.get("deadline_iso"), status="posted")
+                # AI bergan sanani tekshiramiz — o'tib ketgan bo'lsa o'zimiznikiga qaytamiz
+                deadline = (validate_deadline_iso(card.get("deadline_iso"))
+                            or g.get("deadline_iso"))
+                save_grant(g, deadline_iso=deadline, status="posted")
                 posted += 1
             else:
                 save_grant(g, deadline_iso=g.get("deadline_iso"), status="skipped")

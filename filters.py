@@ -229,6 +229,32 @@ def extract_deadline(text: str):
     return min(hits) if hits else None
 
 
+def validate_deadline_iso(iso):
+    """AI bergan muddatni tekshiradi. Ishonchsiz bo'lsa None qaytaradi.
+
+    Kanalda "Oxirgi muddat: 10-avgust, 2024" chiqib qolgan edi — AI yilni
+    noto'g'ri o'qigan va hech kim tekshirmagan. Endi o'tib ketgan yoki juda
+    uzoq sanalar rad etiladi.
+    """
+    if not iso or not isinstance(iso, str) or len(iso) < 10:
+        return None
+
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", iso.strip())
+    if not m:
+        return None
+
+    dt = _try_build(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    if not dt:
+        return None
+
+    now = datetime.now(timezone.utc)
+    if dt < now - timedelta(days=1):
+        return None                              # o'tib ketgan
+    if dt > now + timedelta(days=900):
+        return None                              # ~2.5 yildan uzoq — shubhali
+    return iso
+
+
 def deadline_passed(text: str) -> bool:
     """Matnda faqat o'tib ketgan sana bo'lsa True (ya'ni e'lon eskirgan)."""
     if not text:

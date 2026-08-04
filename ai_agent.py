@@ -25,6 +25,8 @@ from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 
+from filters import validate_deadline_iso
+
 load_dotenv()
 
 MODEL_CHAIN = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
@@ -234,6 +236,7 @@ def _attach_urls(content: dict, grants: list) -> dict:
     """
     valid = []
     dropped = 0
+    bad_deadlines = 0
 
     for card in content.get("cards", []):
         try:
@@ -254,8 +257,17 @@ def _attach_urls(content: dict, grants: list) -> dict:
 
         card["url"] = url
         card["_source"] = source
-        if not card.get("deadline_iso"):
-            card["deadline_iso"] = source.get("deadline_iso")
+
+        # Muddatni tekshiramiz. AI ba'zan yilni noto'g'ri o'qiydi — kanalda
+        # "Oxirgi muddat: 10-avgust, 2024" chiqib qolgan edi. O'tib ketgan yoki
+        # haddan tashqari uzoq sana rad etiladi va o'zimiz topganiga qaytamiz.
+        checked = validate_deadline_iso(card.get("deadline_iso"))
+        if card.get("deadline_iso") and not checked:
+            print(f"  ⚠️  ishonchsiz muddat rad etildi: {card.get('deadline_iso')} "
+                  f"({str(card.get('name'))[:40]})")
+            bad_deadlines += 1
+        card["deadline_iso"] = checked or validate_deadline_iso(source.get("deadline_iso"))
+
         valid.append(card)
 
     if dropped:

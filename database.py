@@ -145,10 +145,31 @@ def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted"):
         "status": status,
     }
 
+    # 1-usul: upsert. Bu `url_key` bo'yicha YAGONA INDEKS mavjud bo'lgandagina
+    # ishlaydi (migration.sql dagi idx_pg_url_key_uniq).
     try:
         supabase.table(TABLE).upsert(row, on_conflict="url_key").execute()
+        return
     except Exception as e:
-        print(f"  Bazaga yozib bo'lmadi: {e}")
+        msg = str(e)
+        # 42P10 = "no unique or exclusion constraint matching the ON CONFLICT
+        # specification", ya'ni indeks yaratilmagan.
+        if "42P10" not in msg and "ON CONFLICT" not in msg:
+            print(f"  Bazaga yozib bo'lmadi: {msg[:120]}")
+            return
+
+    # 2-usul (zaxira): indeks yo'q. Qo'lda tekshirib, yangilaymiz yoki qo'shamiz.
+    # Bu MUHIM — aks holda hech nima yozilmaydi va bot bir xil grantlarni
+    # har kuni qayta post qiladi.
+    try:
+        existing = (supabase.table(TABLE).select("id")
+                    .eq("url_key", url_key).limit(1).execute())
+        if existing.data:
+            supabase.table(TABLE).update(row).eq("url_key", url_key).execute()
+        else:
+            supabase.table(TABLE).insert(row).execute()
+    except Exception as e:
+        print(f"  Bazaga yozib bo'lmadi (zaxira usul ham): {str(e)[:120]}")
 
 
 def get_grants_nearing_deadline(days: int = 5) -> list:
