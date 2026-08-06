@@ -1,0 +1,50 @@
+# Rejalashtirilgan workflow'ni o'chib qolishdan saqlaydi.
+#
+# NEGA KERAK: GitHub OCHIQ repozitoriyada `schedule` bilan ishlaydigan
+# workflow'ni repozitoriyada 60 KUN hech qanday faollik bo'lmasa AVTOMATIK
+# O'CHIRIB QO'YADI (docs.github.com/actions — "Events that trigger workflows").
+# Botning o'z yurishlari "faollik" hisoblanmaydi — faqat commit hisoblanadi.
+#
+# Ya'ni ikki oy kodga tegmasangiz, kanal jimgina to'xtaydi va bu haqda
+# hech qanday xabar kelmasligi mumkin.
+#
+# Bu workflow oyiga bir marta kichik commit qilib, hisoblagichni nolga
+# qaytaradi. Fayl o'zgarishi bitta sana qatoridan iborat.
+#
+# ZAXIRA REJA: agar bu ishlamasa (ba'zi hollarda GITHUB_TOKEN bilan
+# qilingan commit faollik deb hisoblanmaydi), Actions bo'limiga kirib
+# "Nova Grants Bot" -> "Enable workflow" tugmasini bosing. Yoki oddiygina
+# har 2 oyda repozitoriyaga istalgan commit yuboring.
+
+name: Keepalive
+
+on:
+  schedule:
+    # Har oyning 1-kuni, 05:40 UTC. Botning yurishi (00:20) bilan
+    # to'qnashmasligi uchun boshqa vaqt tanlandi.
+    - cron: '40 5 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nova-grants-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanani yangilash va commit qilish
+        run: |
+          mkdir -p .github
+          date -u '+%Y-%m-%dT%H:%M:%SZ' > .github/last-keepalive.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/last-keepalive.txt
+          # Hech nima o'zgarmagan bo'lsa commit qilmaymiz (xato bermasin)
+          git diff --staged --quiet || git commit -m "Keepalive: rejalashtirilgan workflow o'chib qolmasligi uchun"
+          git push

@@ -333,6 +333,30 @@ qaytargan sayt 2 daqiqaga chetlab o'tiladi. RSS yig'ishda `429`/`503` kelsa
 
 ---
 
+## Uzoq muddat ishlashi
+
+**Eng katta xavf — GitHub'ning 60 kunlik qoidasi.** Ochiq repozitoriyada
+`schedule` bilan ishlaydigan workflow, repozitoriyada 60 kun **hech qanday
+faollik** bo'lmasa, avtomatik o'chiriladi. Botning o'z yurishlari faollik
+hisoblanmaydi — faqat commit hisoblanadi. Ya'ni ikki oy kodga tegmasangiz,
+kanal jimgina to'xtaydi.
+
+`.github/workflows/keepalive.yml` oyiga bir marta kichik commit qilib buni
+oldini oladi. **Zaxira reja:** Actions → "Nova Grants Bot" → *Enable
+workflow*, yoki har 2 oyda istalgan commit yuborish.
+
+Qolgan omillar:
+
+| Omil | Holat |
+|---|---|
+| Actions daqiqalari | Ochiq repo — **cheksiz va bepul** |
+| Supabase (bepul) | 7 kun murojaatsiz qolsa to'xtaydi. Bot har kuni murojaat qiladi ✔ |
+| Supabase hajmi | ~2 800 qator, yiliga ~30 000 qo'shiladi. 500 MB chegarasidan juda uzoq ✔ |
+| Gemini (bepul) | Yurishiga ~10 000 token. Kvota chegarasidan ancha past ✔ |
+| Telegram tokeni | Muddati yo'q ✔ |
+| Manbalar | **Vaqt o'tishi bilan buziladi.** Choraklik `python tools/check_sources.py` |
+| `actions/checkout@v4` | Bir necha yildan keyin yangilash kerak bo'ladi |
+
 ## Nosozlik bildirishnomasi
 
 `.env` da `ADMIN_ID` bo'lsa, yurish oxirida muammo topilganda botga shaxsiy
