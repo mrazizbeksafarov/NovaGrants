@@ -19,8 +19,9 @@ import hashlib
 import threading
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode, urljoin
 
-import requests
 from bs4 import BeautifulSoup
+
+import http_client
 
 TIMEOUT = 15
 MAX_HOPS = 2                 # aggregator -> aggregator -> rasmiy sayt
@@ -105,8 +106,9 @@ GOOD_PATH = re.compile(
 )
 GOOD_TLD = (".edu", ".ac.uk", ".gov", ".edu.au", ".ac.jp", ".int", ".eu", ".org", ".uz")
 
-_session = requests.Session()
-_session.headers.update(HEADERS)
+# Brauzer TLS izi bilan — aggregator maqolalarining ko'pi Cloudflare orqasida.
+# Oddiy `requests` ularga umuman kira olmasdi (http_client.py izohiga qarang).
+_session = http_client.Client(HEADERS)
 
 # ── Domen bo'yicha tezlikni cheklash (429 "Too Many Requests" oldini oladi) ──
 _host_locks = {}
@@ -126,7 +128,7 @@ def _throttle(host: str):
         _host_last[host] = time.monotonic()
 
 
-def _get(url: str, allow_redirects=True, stream=False):
+def _get(url: str, allow_redirects=True):
     """Xushmuomala GET: domen bo'yicha tanaffus, 429 da qayta urinish va sovutish."""
     host = host_of(url)
 
@@ -137,9 +139,8 @@ def _get(url: str, allow_redirects=True, stream=False):
 
     for attempt in range(MAX_RETRY_429 + 1):
         _throttle(host)
-        try:
-            r = _session.get(url, timeout=TIMEOUT, allow_redirects=allow_redirects, stream=stream)
-        except Exception:
+        r = _session.get(url, timeout=TIMEOUT, allow_redirects=allow_redirects)
+        if r is None:
             return None
 
         if r.status_code == 429:
@@ -260,15 +261,10 @@ def title_fingerprint(title: str) -> str:
 
 def follow_redirects(url: str) -> str:
     """Qisqartirilgan/o'tkazuvchi havolani oxirgi haqiqiy manzilgacha ochadi."""
-    r = _get(url, allow_redirects=True, stream=True)
+    r = _get(url, allow_redirects=True)
     if r is None:
         return url
-    final = r.url
-    try:
-        r.close()
-    except Exception:
-        pass
-    return final or url
+    return getattr(r, "url", "") or url
 
 
 def _score_candidate(anchor_text: str, href: str, position: float) -> int:

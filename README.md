@@ -145,6 +145,7 @@ test yozing. CI botdan **oldin** shu testlarni ishga tushiradi.
 | `sources.py` | Manba katalogi (har biri jonli tekshirilgan) |
 | `scraper.py` | RSS / Telegram / grants.gov API dan yig'ish |
 | `filters.py` | Bu imkoniyatmi yoki yangilikmi — hal qiladi, muddatni topadi |
+| `http_client.py` | Brauzer TLS izi bilan HTTP — bot himoyasidan o'tish |
 | `link_resolver.py` | **Asl havolani qazish** va URL normallashtirish |
 | `database.py` | Supabase, takrorga qarshi 3 qatlam |
 | `ai_agent.py` | Gemini bilan tuzilgan mazmun (havolasiz!) |
@@ -259,6 +260,45 @@ yozilgan. Uch turkum:
 - **Mavzu**: TechCrunch, Hacker News, Crunchbase kabi yangilik lentalari —
   ularda grant yo'q, "startup $5M jalb qildi" tipidagi postlar bor
 - **O'lik**: oxirgi posti bir necha yil oldin bo'lgan Telegram kanallari
+
+### Bot himoyasi bo'lgan saytlar (`http_client.py`)
+
+Bir qancha sayt Python `requests` ga **umuman javob bermaydi**, lekin
+Chrome'da bemalol ochiladi. Sabab **cookie emas — TLS barmoq izi**.
+
+Har bir HTTP mijoz TLS qo'l berishida shifr to'plamlari va kengaytmalarni
+o'ziga xos tartibda yuboradi (JA3/JA4 izi). `requests` (OpenSSL) ning izi
+Chrome nikidan tubdan farq qiladi va Cloudflare/Akamai buni birinchi
+paketdayoq aniqlaydi — User-Agent ni qanday yozganingizdan qat'i nazar.
+
+Shu sababli **brauzerdan cookie ko'chirish yordam bermaydi**:
+
+- `cf_clearance` cookie IP + User-Agent + TLS iziga bog'langan. Toshkentdagi
+  brauzeringizdan olingan cookie GitHub Actions serveridan yuborilganda
+  darrov rad etiladi.
+- Muddati odatda 30 daqiqa – 24 soat. Bot kuniga bir marta ishlaydi, ya'ni
+  cookie ni har kuni qo'lda yangilash kerak bo'lardi.
+- Akamai (chevening.org, britishcouncil.org) cookie ga deyarli tayanmaydi —
+  u TLS va HTTP/2 kadr tartibiga qaraydi.
+
+Yechim — `curl_cffi`, Chrome ning aynan o'sha izini taqlid qiladi:
+
+| Sayt | `requests` | `curl_cffi` |
+|---|---|---|
+| chevening.org | ReadTimeout | **200** (108 KB) |
+| britishcouncil.org | ConnectionError | **200** (54 KB) |
+| opportunitiesforyouth.org | 429 | **200** (254 KB) |
+
+Hammasi ham ochilmaydi. `daad.de` va `fellowshipbard.com` **TCP darajasida**
+javob bermaydi — bu bot himoyasi emas, tarmoq/geo to'siq (TLS ulanishning
+o'zi tugamaydi). `eurodesk.eu` va `scholarshiptab.com` 403 da qoladi.
+
+`curl_cffi` o'rnatilmagan bo'lsa modul jimgina oddiy `requests` ga qaytadi —
+bot to'xtamaydi, faqat o'sha manbalar yopiq qoladi.
+
+> 429 kelganda **ikkinchi mijoz bilan darrov qayta urinilmaydi.** 429
+> "sekinlashtir" degani; boshqa mijoz bilan qayta so'rash bloklanishni
+> uzaytiradi. Kutish `scraper.py` va `link_resolver.py` ning ishi.
 
 ### Rasmiy manbalar nega kam
 

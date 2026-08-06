@@ -95,6 +95,14 @@ SOURCES = [
     {"id": "scholarshipunion", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
      "url": "https://scholarshipunion.com/feed/", "pages": 2},
 
+    # Oddiy `requests` ga HTTP 429 berardi. http_client.py (Chrome TLS izi)
+    # bilan 200 va 254 KB feed qaytardi — shu sabab qaytarildi.
+    # DIQQAT: bu sayt tez-tez cheklaydi. 2026-08-06 da ko'p sinovdan keyin
+    # 429 dan 403 ga o'tdi. Kuniga bir marta murojaatda tiklanishi kutiladi;
+    # bir necha kun 403 tursa — DISABLED ga ko'chiring. Bitta sahifa yetarli.
+    {"id": "opps4youth", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
+     "url": "https://opportunitiesforyouth.org/feed/"},
+
     # ── RASMIY (qazish shart emas) ──────────────────────────────────────
     # O'zbekiston uchun Fulbright, UGRAD, professional almashuv dasturlari.
     # 2026-08-06: 10 ta yozuv, 1 kunlik. Eng aniq manbalardan biri.

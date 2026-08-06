@@ -1,0 +1,15 @@
+# IXTIYORIY — botning ishlashi uchun SHART EMAS.
+#
+# curl_cffi Chrome ning TLS barmoq izini taqlid qiladi. Cloudflare va Akamai
+# orqasidagi saytlar (chevening.org, britishcouncil.org,
+# opportunitiesforyouth.org) oddiy `requests` ga umuman javob bermaydi —
+# sabab cookie emas, TLS izi. Batafsil: http_client.py boshidagi izoh.
+#
+# O'rnatilmasa http_client.py jimgina oddiy `requests` ga qaytadi: bot
+# ishlaydi, faqat himoyalangan manbalar yopiq qoladi. Aynan shu sababli
+# alohida faylda — ixtiyoriy paket o'rnatilmagani uchun kunlik post
+# to'xtab qolmasligi kerak.
+#
+#     pip install -r requirements-optional.txt
+
+curl_cffi>=0.7.0,<1

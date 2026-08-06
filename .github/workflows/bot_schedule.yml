@@ -39,6 +39,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # curl_cffi bot himoyasi bo'lgan saytlarni ochadi, lekin SHART EMAS.
+      # O'rnatilmasa http_client.py oddiy `requests` ga qaytadi. Shuning uchun
+      # bu qadam yiqilsa ham kunlik post to'xtamaydi.
+      - name: Bot himoyasi mijozi (ixtiyoriy)
+        continue-on-error: true
+        run: pip install -r requirements-optional.txt
+
+      - name: Mijoz holati
+        run: python -c "import http_client; print('curl_cffi:', http_client.HAS_CURL)"
+
       # Testlar tarmoqsiz ishlaydi va ~1 soniya oladi. Buzilgan kod kanalga
       # chiqmasligi uchun botdan OLDIN turadi.
       - name: Testlar

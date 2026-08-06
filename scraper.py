@@ -20,9 +20,9 @@ import concurrent.futures
 from datetime import datetime, timezone, timedelta
 
 import feedparser
-import requests
 from bs4 import BeautifulSoup
 
+import http_client
 from sources import enabled_sources
 from link_resolver import clean_url, url_key, is_blocked, is_aggregator, host_of
 
@@ -47,8 +47,11 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-_session = requests.Session()
-_session.headers.update(HEADERS)
+# Brauzer TLS izi bilan ishlaydigan mijoz. Bir qancha sayt oddiy `requests`
+# ga umuman javob bermaydi (chevening.org, britishcouncil.org,
+# opportunitiesforyouth.org) — sabab cookie emas, TLS barmoq izi.
+# Batafsil: http_client.py boshidagi izoh.
+_session = http_client.Client(HEADERS)
 
 
 def _clean_html(raw: str) -> str:
@@ -83,13 +86,13 @@ def _entry_age_days(entry):
 def _fetch_feed(url, source_id):
     """Feed'ni oladi. 429 va vaqtinchalik xatolarda qayta uriniladi."""
     for attempt in range(MAX_RETRY + 1):
-        try:
-            resp = _session.get(url, timeout=TIMEOUT)
-        except Exception as e:
+        resp = _session.get(url, timeout=TIMEOUT)
+
+        if resp is None:                          # ulanib bo'lmadi
             if attempt < MAX_RETRY:
                 time.sleep(3 * (attempt + 1))
                 continue
-            print(f"  [{source_id}] xatolik: {type(e).__name__}")
+            print(f"  [{source_id}] ulanib bo'lmadi")
             return None
 
         if resp.status_code == 200:
@@ -215,11 +218,14 @@ def _post_age_days(wrap):
 def scrape_telegram(src):
     ch = src["channel"]
     out = []
+    resp = _session.get(f"https://t.me/s/{ch}", timeout=TIMEOUT)
+    if resp is None:
+        print(f"  [{src['id']}] ulanib bo'lmadi")
+        return out
+    if resp.status_code != 200:
+        print(f"  [{src['id']}] HTTP {resp.status_code}")
+        return out
     try:
-        resp = _session.get(f"https://t.me/s/{ch}", timeout=TIMEOUT)
-        if resp.status_code != 200:
-            print(f"  [{src['id']}] HTTP {resp.status_code}")
-            return out
         soup = BeautifulSoup(resp.text, "html.parser")
     except Exception as e:
         print(f"  [{src['id']}] xatolik: {type(e).__name__}")
@@ -281,13 +287,16 @@ def scrape_telegram(src):
 # ──────────────────────────────────────────────────────────────────────
 def scrape_grantsgov(src):
     out = []
+    resp = _session.post(
+        src["url"],
+        json={"rows": 50, "keyword": "", "oppStatuses": "posted"},
+        headers={"Content-Type": "application/json"},
+        timeout=TIMEOUT,
+    )
+    if resp is None:
+        print(f"  [{src['id']}] ulanib bo'lmadi")
+        return out
     try:
-        resp = _session.post(
-            src["url"],
-            json={"rows": 50, "keyword": "", "oppStatuses": "posted"},
-            headers={"Content-Type": "application/json"},
-            timeout=TIMEOUT,
-        )
         hits = resp.json().get("data", {}).get("oppHits", [])
     except Exception as e:
         print(f"  [{src['id']}] xatolik: {type(e).__name__}")
