@@ -41,6 +41,22 @@ def _esc(text: str) -> str:
             .replace(">", "&gt;"))
 
 
+def _esc_attr(url: str) -> str:
+    """href="..." ichiga qo'yish uchun xavfsiz URL.
+
+    Bu ILGARI QILINMAGAN edi va jiddiy oqibati bor edi: ko'p parametrli
+    havolada (`?a=1&b=2`) xom `&` qoladi, qo'shtirnoq esa atributni yorib
+    yuboradi. Telegram bunday xabarni "can't parse entities" bilan rad etadi,
+    zaxira yo'l esa BARCHA teglarni o'chirib yuborardi — ya'ni post havolasiz
+    chiqardi. Aynan "faqat asl havola" kafolatining teskarisi.
+    """
+    return (str(url or "")
+            .replace("&", "&amp;")
+            .replace('"', "&quot;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;"))
+
+
 def _clean(text: str, limit: int = 400) -> str:
     text = re.sub(r"\s+", " ", str(text or "")).strip()
     return text[:limit].rsplit(" ", 1)[0] + "..." if len(text) > limit else text
@@ -62,6 +78,26 @@ def _deadline_label(iso: str) -> str:
 # ──────────────────────────────────────────────────────────────────
 # 1-ko'rinish: Rich message bloklari
 # ──────────────────────────────────────────────────────────────────
+def usable_cards(cards: list) -> list:
+    """Nomi va havolasi bor, takrorlanmagan kartochkalar.
+
+    AI ba'zan bitta indexni ikki marta qaytaradi — bunda bitta grant postda
+    ikki marta chiqib qolardi. Shu yerda bir marta filtrlab, ikkala ko'rinish
+    (rich va HTML) uchun bir xil ro'yxat ishlatamiz.
+    """
+    out, seen = [], set()
+    for card in cards or []:
+        name = _clean(card.get("name"), 140)
+        url = str(card.get("url") or "").strip()
+        if not name or not url.lower().startswith(("http://", "https://")):
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        out.append(card)
+    return out
+
+
 def build_rich_blocks(headline: str, cards: list) -> list:
     """Tuzilgan kartochkalardan rich message bloklarini quradi."""
     blocks = []
@@ -70,11 +106,9 @@ def build_rich_blocks(headline: str, cards: list) -> list:
         blocks.append({"type": "heading", "size": 2, "text": _clean(headline, 120)})
         blocks.append({"type": "divider"})
 
-    for card in cards:
+    for card in usable_cards(cards):
         name = _clean(card.get("name"), 140)
         url = card.get("url", "")
-        if not name or not url:
-            continue
 
         blocks.append({"type": "heading", "size": 3, "text": name})
 
@@ -132,11 +166,9 @@ def build_html(headline: str, cards: list) -> str:
     if headline:
         parts.append(f"<b>{_esc(_clean(headline, 120))}</b>\n")
 
-    for card in cards:
+    for card in usable_cards(cards):
         name = _clean(card.get("name"), 140)
         url = card.get("url", "")
-        if not name or not url:
-            continue
 
         parts.append(f"<b>{_esc(name)}</b>")
 
@@ -160,7 +192,7 @@ def build_html(headline: str, cards: list) -> str:
             # Yig'iladigan iqtibos — ichida bo'sh qator BO'LMASLIGI kerak
             parts.append("<blockquote expandable>" + "\n".join(detail_lines) + "</blockquote>")
 
-        parts.append(f'<a href="{url}">{CTA}</a>')
+        parts.append(f'<a href="{_esc_attr(url)}">{CTA}</a>')
         parts.append("")
 
     if not parts:

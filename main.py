@@ -23,7 +23,7 @@ from scraper import fetch_all
 from filters import (
     looks_like_opportunity, extract_deadline, deadline_passed, validate_deadline_iso,
 )
-from link_resolver import resolve_grant, is_aggregator
+from link_resolver import resolve_grant, is_aggregator, is_blocked
 from database import (
     init_db, get_seen_source_keys, get_seen_url_keys, get_seen_fingerprints,
     save_grant as _save_grant, get_grants_nearing_deadline,
@@ -35,6 +35,7 @@ from telegram_bot import (
     send_telegram_message as _send_telegram_message,
     publish as _publish,
     validate_rich_blocks,
+    notify_admin,
 )
 
 MAX_RESOLVE_PER_RUN = 70     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
@@ -54,10 +55,10 @@ def log(msg=""):
 DB_READY = False
 
 
-def save_grant(grant, deadline_iso=None, status="posted"):
+def save_grant(grant, deadline_iso=None, status="posted", key=None):
     if DRY_RUN or not DB_READY:
         return
-    _save_grant(grant, deadline_iso=deadline_iso, status=status)
+    _save_grant(grant, deadline_iso=deadline_iso, status=status, key=key)
 
 
 def seen_source_keys(keys):
@@ -113,9 +114,28 @@ def send_reminders():
         log("   Bugun eslatma yo'q.")
         return
 
-    from post_builder import _deadline_label, _esc, CHANNEL_TAG
+    from post_builder import _deadline_label, _esc, _esc_attr, CHANNEL_TAG
 
-    valid = [g for g in grants if g.get("url") and g.get("title")]
+    # Bazada 2800+ eski yozuv bor va ularning URL'i aggregator maqolasiniki.
+    # Asosiy oqimda aggregator filtri bor, eslatmada yo'q edi — natijada
+    # "faqat asl havola" kafolati aynan shu yerdan buzilardi.
+    valid = []
+    leaked = 0
+    for g in grants:
+        url = str(g.get("url") or "")
+        if not url or not g.get("title"):
+            continue
+        if is_aggregator(url) or is_blocked(url):
+            leaked += 1
+            mark_reminder_sent(url)               # qayta ko'tarilmasin
+            continue
+        if not validate_deadline_iso(str(g.get("deadline") or "")):
+            continue                              # muddat o'tib ketgan yoki ishonchsiz
+        valid.append(g)
+
+    if leaked:
+        log(f"   {leaked} ta eski aggregator havolasi eslatmadan chiqarildi.")
+
     if not valid:
         log("   Eslatma uchun yaroqli yozuv yo'q.")
         return
@@ -141,7 +161,7 @@ def send_reminders():
     html = ["<b>Oxirgi muddat yaqinlashmoqda</b>", "",
             "Quyidagi imkoniyatlar uchun hujjat topshirish muddati tugayapti:", ""]
     for i, g in enumerate(valid, 1):
-        html.append(f'{i}. <a href="{g["url"]}">{_esc(str(g["title"])[:120])}</a>')
+        html.append(f'{i}. <a href="{_esc_attr(g["url"])}">{_esc(str(g["title"])[:120])}</a>')
         html.append(f"   <i>Muddat: {_deadline_label(g.get('deadline'))}</i>")
         html.append("")
     html.append("Kechikkan ariza qabul qilinmaydi.")
@@ -224,7 +244,12 @@ def deduplicate(items):
 
         if uk in seen_urls or (fp and fp in seen_fps):
             dropped_db += 1
-            save_grant(g, status="skipped")       # qayta qazimaslik uchun
+            # DIQQAT: bu yerda grantning O'Z qatoriga tegmaymiz. Qator bazada
+            # allaqachon bor va u "posted" bo'lishi mumkin — uni "skipped" qilib
+            # qo'ysak, muddat va eslatma belgisi yo'qoladi. Shuning uchun faqat
+            # MANBA MAQOLASI kaliti bilan alohida qator yozamiz: ertaga o'sha
+            # aggregator maqolasi qayta ochilmaydi, grant esa buzilmaydi.
+            save_grant(g, status="duplicate", key=g.get("source_key"))
             continue
 
         if uk in batch_urls or (fp and fp in batch_fps):
@@ -311,6 +336,7 @@ def publish(items):
 
 
 def run():
+    problems = []                # yurish oxirida adminga yuboriladi
     started = datetime.now(timezone.utc)
     log("=" * 66)
     log(f"Nova Grants — {started.strftime('%Y-%m-%d %H:%M')} UTC"
@@ -335,23 +361,35 @@ def run():
         return
 
     resolved = resolve_links(candidates)
+    if candidates and len(resolved) < len(candidates[:MAX_RESOLVE_PER_RUN]) * 0.35:
+        problems.append(f"Asl havola topish darajasi past: "
+                        f"{len(resolved)}/{len(candidates[:MAX_RESOLVE_PER_RUN])}")
 
     # Xavfsizlik to'ri: aggregator havolasi hech qanday holatda o'tmasin
     leaked = [g for g in resolved if is_aggregator(g["url"])]
     if leaked:
         log(f"── DIQQAT: {len(leaked)} ta aggregator havolasi filtrdan o'tib ketdi — tashlandi.")
+        problems.append(f"{len(leaked)} ta aggregator havolasi filtrdan o'tib ketdi")
         resolved = [g for g in resolved if not is_aggregator(g["url"])]
 
     unique = deduplicate(resolved)
     unique = enrich_deadlines(unique)
 
     posted = publish(unique)
+    if unique and not posted:
+        problems.append(f"{len(unique)} ta nomzod bor edi, lekin hech biri post qilinmadi")
 
+    elapsed = (datetime.now(timezone.utc) - started).seconds
     log()
     log("=" * 66)
-    log(f"Yakunlandi: {posted} ta yangi imkoniyat kanalga chiqdi "
-        f"({(datetime.now(timezone.utc) - started).seconds}s)")
+    log(f"Yakunlandi: {posted} ta yangi imkoniyat kanalga chiqdi ({elapsed}s)")
     log("=" * 66)
+
+    if problems and not DRY_RUN:
+        notify_admin("<b>Nova Grants — diqqat talab qiladi</b>\n\n"
+                     + "\n".join(f"• {p}" for p in problems)
+                     + f"\n\nYurish: {started.strftime('%Y-%m-%d %H:%M')} UTC, "
+                       f"{posted} ta post, {elapsed}s")
 
 
 if __name__ == "__main__":

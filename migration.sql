@@ -48,5 +48,18 @@ create unique index if not exists idx_pg_url_key_uniq
   on public.posted_grants (url_key)
   where url_key is not null and url_key <> '';
 
+-- 6) Eslatma so'rovi status + reminder_sent bo'yicha filtrlaydi.
+create index if not exists idx_pg_status on public.posted_grants (status);
+
 -- Tekshirish:
 --   select status, count(*) from public.posted_grants group by status;
+--
+-- Kutilayotgan holatlar:
+--   posted    — kanalga chiqqan grant
+--   skipped   — asl havola topilmadi yoki AI rad etdi
+--   duplicate — boshqa aggregatorda chiqqan, bazada allaqachon bor grant.
+--               Bu qator MANBA MAQOLASI kaliti bilan saqlanadi, grantning
+--               o'zi emas — shuning uchun "posted" qator buzilmaydi.
+--
+-- Sxema o'zgarishi SHART EMAS: `status` matn ustuni, "duplicate" o'z-o'zidan
+-- ishlaydi. Yuqoridagi indeks faqat tezlik uchun.

@@ -25,6 +25,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
+ADMIN_ID = os.getenv("ADMIN_ID", "").strip()
 
 # Xabar uzunligi chegarasi jonli API'da o'lchandi (tools/probe_telegram.py):
 # 32768 belgi o'tadi, 32769 da "text is too long". Bu Bot API 10.x yangiligi —
@@ -182,6 +183,30 @@ def _hard_split(line: str, limit: int) -> list:
     return parts
 
 
+_ANCHOR = re.compile(r'<a\s+href="([^"]*)"[^>]*>(.*?)</a>', re.I | re.S)
+
+
+def strip_tags_keep_links(html: str) -> str:
+    """Teglarni olib tashlaydi, LEKIN havolani matn sifatida saqlab qoladi.
+
+    Ilgari bu joyda oddiy `re.sub(r"<[^>]+>", "", ...)` bor edi. HTML xatosi
+    yuz berganda u <a> tegini ham o'chirar va post KANALGA HAVOLASIZ chiqardi.
+    Botning butun maqsadi havola yetkazish bo'lgani uchun bu eng yomon
+    nosozlik edi — endi havola oddiy matnda qoladi.
+    """
+    def repl(m):
+        url = (m.group(1) or "").replace("&amp;", "&").replace("&quot;", '"')
+        text = re.sub(r"<[^>]+>", "", m.group(2) or "").strip()
+        if not url:
+            return text
+        return f"{text}: {url}" if text else url
+
+    out = _ANCHOR.sub(repl, html or "")
+    out = re.sub(r"<[^>]+>", "", out)
+    return (out.replace("&amp;", "&").replace("&lt;", "<")
+               .replace("&gt;", ">").replace("&quot;", '"'))
+
+
 def _post(payload: dict, method: str = "sendMessage") -> tuple:
     """Bitta so'rov yuboradi. Qaytaradi: (muvaffaqiyat, xato_matni)."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
@@ -255,7 +280,7 @@ def send_telegram_message(text: str, target_chat_id: str = None) -> bool:
             if "can't parse entities" in err.lower():
                 print(f"  ⚠️  HTML xatosi: {err}. Teglarsiz qayta yuborilmoqda...")
                 payload.pop("parse_mode", None)
-                payload["text"] = re.sub(r"<[^>]+>", "", chunk)
+                payload["text"] = strip_tags_keep_links(chunk)
                 continue
 
             print(f"  ❌ {i}-qism xatosi: {err}")
@@ -323,20 +348,27 @@ def html_to_plain(html: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = None) -> bool:
-    """Rich message yuboradi. Ishlamasa False qaytaradi (chaqiruvchi HTML ga o'tadi).
+def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = None) -> tuple:
+    """Rich message yuboradi.
+
+    Qaytaradi: (to'liq_yuborildi, yuborilgan_qism_soni).
+
+    `sent_count` MUHIM: ilgari bu funksiya faqat True/False qaytarardi va
+    3 qismdan 2-si xato bersa `publish()` BUTUN postni HTML da qaytadan
+    yuborardi — kanalda yarim takror post paydo bo'lardi. Endi chaqiruvchi
+    hech nima yuborilmagandagina zaxiraga o'tadi.
 
     InputRichMessage da `html`, `markdown` yoki `blocks` dan AYNAN BITTASI
-    bo'lishi kerak (rasmiy hujjat). `text` degan maydon yo'q — shuning uchun
-    bu yerda faqat `blocks` yuboriladi. `plain_text` faqat log uchun.
+    bo'lishi kerak (rasmiy hujjat, Bot API 10.2). `text` degan maydon yo'q.
     """
     if not blocks or not BOT_TOKEN or not CHANNEL_ID:
-        return False
+        return False, 0
     if not rich_messages_available():
-        return False
+        return False, 0
 
     chat_id = target_chat_id or CHANNEL_ID
     groups = _split_blocks(blocks)
+    sent_count = 0
 
     for i, group in enumerate(groups, 1):
         payload = {"chat_id": chat_id, "rich_message": {"blocks": group}}
@@ -347,6 +379,7 @@ def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = 
             if ok:
                 print(f"  ✅ {i}/{len(groups)}-qism yuborildi (rich, {len(group)} blok)")
                 sent = True
+                sent_count += 1
                 break
             if err.startswith("429:"):
                 wait = int(err.split(":")[1]) + 1
@@ -354,14 +387,14 @@ def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = 
                 time.sleep(wait)
                 continue
             print(f"  ⚠️  Rich xabar yuborilmadi: {err}")
-            return False                          # HTML zaxirasiga o'tamiz
+            return False, sent_count              # HTML zaxirasiga o'tamiz
 
         if not sent:
-            return False
+            return False, sent_count
         if i < len(groups):
             time.sleep(PAUSE_BETWEEN)
 
-    return True
+    return True, sent_count
 
 
 def validate_rich_blocks(blocks: list, plain_text: str = "") -> tuple:
@@ -398,11 +431,39 @@ def publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
     Ikkala ko'rinish ham post_builder.py da BIR MANBADAN quriladi, shuning uchun
     qaysi yo'l ishlashidan qat'i nazar mazmun va HAVOLALAR bir xil bo'ladi.
     """
-    if blocks and send_rich_message(blocks, html_to_plain(html_text), target_chat_id):
-        return True
     if blocks:
+        ok, sent = send_rich_message(blocks, html_to_plain(html_text), target_chat_id)
+        if ok:
+            return True
+        if sent:
+            # Qism-qism yuborilib, o'rtada uzilib qoldi. HTML ni qaytadan
+            # yuborsak kanalda TAKROR post paydo bo'ladi — shuning uchun
+            # yuborilganini qoldirib, xatoni oshkora bildiramiz.
+            print(f"  ❌ Rich xabar {sent}-qismdan keyin uzildi. HTML zaxirasi "
+                  f"YUBORILMADI (takror postning oldini olish uchun).")
+            return False
         print("  Rich message ishlamadi — HTML ko'rinishga o'tilmoqda.")
     return send_telegram_message(html_text, target_chat_id)
+
+
+def notify_admin(text: str) -> bool:
+    """Nosozlik haqida adminga shaxsiy xabar.
+
+    `ADMIN_ID` .env.example da bor edi, lekin kodda umuman ishlatilmasdi —
+    ya'ni bot buzilsa hech kim bilmasdi. Endi yurish oxirida xulosa keladi.
+    Sozlanmagan bo'lsa jimgina o'tkazib yuboriladi.
+    """
+    if not ADMIN_ID or not BOT_TOKEN or ADMIN_ID == "your_admin_id":
+        return False
+    ok, err = _post({
+        "chat_id": ADMIN_ID,
+        "text": text[:4000],
+        "parse_mode": "HTML",
+        "link_preview_options": {"is_disabled": True},
+    })
+    if not ok:
+        print(f"  Adminga xabar ketmadi: {err}")
+    return ok
 
 
 if __name__ == "__main__":

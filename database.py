@@ -9,9 +9,21 @@ TAKRORGA QARSHI UCH QATLAM:
                    ("/apply" va "/apply/en") takrorni ushlaydi.
 
 Yozuv holati (status):
-  "posted"  — kanalga chiqdi
-  "skipped" — chiqmadi (asl havola topilmadi, AI rad etdi va h.k.).
-              Baribir yozib qo'yamiz — ertaga qayta urinib vaqt sarflamaslik uchun.
+  "posted"    — kanalga chiqdi
+  "skipped"   — chiqmadi (asl havola topilmadi, AI rad etdi va h.k.).
+                Baribir yozib qo'yamiz — ertaga qayta urinib vaqt sarflamaslik uchun.
+  "duplicate" — boshqa aggregatorda chiqqan, bazada allaqachon bor grant.
+                Bu yozuv MANBA MAQOLASI kaliti bilan saqlanadi, grantning o'zi emas.
+
+MUHIM QOIDA — "posted" YOZUV HECH QACHON PASAYTIRILMAYDI.
+Ilgari `deduplicate()` takror topilgan grantni `status="skipped"` bilan qayta
+yozardi va upsert mavjud qatorni ustidan bosardi. Natijada:
+  • post qilingan grant `skipped` ga tushardi,
+  • `deadline` NULL ga aylanardi,
+  • `reminder_sent` False ga qaytardi,
+  • `source_key` boshqa aggregatorniki bilan almashardi.
+Ya'ni 2+ manbada chiqqan har qanday grant eslatma ololmay qolardi. Endi
+`save_grant()` avval qatorni o'qiydi va pasaytirishni rad etadi.
 
 Yangi ustunlar kerak — migration.sql ni Supabase SQL Editor da bir marta ishlating.
 """
@@ -120,8 +132,19 @@ def get_seen_fingerprints(fingerprints: list) -> set:
     return _collect("fingerprint", fingerprints)
 
 
-def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted"):
-    """Yozuvni bazaga qo'shadi (mavjud bo'lsa yangilaydi)."""
+def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted",
+               key: str = None):
+    """Yozuvni bazaga qo'shadi yoki yangilaydi.
+
+    key — qator qaysi kalit bo'yicha saqlanishi. Berilmasa grantning asl
+          havolasi (`url_key`) ishlatiladi. `deduplicate()` bu yerga MANBA
+          MAQOLASI kalitini beradi, shunda grantning o'z qatoriga tegilmaydi.
+
+    Kafolatlar:
+      • "posted" qator hech qachon "skipped"/"duplicate" ga pasaymaydi
+      • mavjud `deadline` bo'sh qiymat bilan o'chirilmaydi
+      • `reminder_sent` faqat YANGI qator qo'shilganda False qilinadi
+    """
     if not supabase:
         return
 
@@ -131,7 +154,9 @@ def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted"):
     # Asl havola topilmagan yozuvlarda url_key bo'sh bo'ladi. Bunday holatda
     # manba maqolasining kalitini ishlatamiz — shunda yozuv baribir yagona
     # bo'ladi va ertaga o'sha maqola qayta ochilmaydi.
-    url_key = grant.get("url_key") or grant.get("source_key") or ""
+    url_key = key or grant.get("url_key") or grant.get("source_key") or ""
+    if not url_key:
+        return
 
     row = {
         "title": (grant.get("title") or "")[:255],
@@ -140,36 +165,42 @@ def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted"):
         "source_url": grant.get("source_url", ""),
         "source_key": grant.get("source_key", ""),
         "fingerprint": grant.get("fingerprint", ""),
-        "deadline": deadline_iso,
-        "reminder_sent": False,
         "status": status,
     }
+    if deadline_iso:
+        row["deadline"] = deadline_iso
 
-    # 1-usul: upsert. Bu `url_key` bo'yicha YAGONA INDEKS mavjud bo'lgandagina
-    # ishlaydi (migration.sql dagi idx_pg_url_key_uniq).
     try:
-        supabase.table(TABLE).upsert(row, on_conflict="url_key").execute()
+        existing = (supabase.table(TABLE).select("id,status")
+                    .eq("url_key", url_key).limit(1).execute())
+    except Exception as e:
+        print(f"  Bazani o'qib bo'lmadi ({url_key[:40]}): {str(e)[:100]}")
         return
+
+    if existing.data:
+        current = (existing.data[0].get("status") or "").lower()
+        # Chop etilgan grantni pasaytirmaymiz — eslatma tizimi shunga tayanadi.
+        if current == "posted" and status != "posted":
+            return
+        try:
+            supabase.table(TABLE).update(row).eq("url_key", url_key).execute()
+        except Exception as e:
+            print(f"  Bazaga yozib bo'lmadi: {str(e)[:120]}")
+        return
+
+    row["reminder_sent"] = False
+    try:
+        supabase.table(TABLE).insert(row).execute()
     except Exception as e:
         msg = str(e)
-        # 42P10 = "no unique or exclusion constraint matching the ON CONFLICT
-        # specification", ya'ni indeks yaratilmagan.
-        if "42P10" not in msg and "ON CONFLICT" not in msg:
-            print(f"  Bazaga yozib bo'lmadi: {msg[:120]}")
+        # Poyga holati: shu oraliqda boshqa yurish qator qo'shgan bo'lishi mumkin.
+        if "duplicate key" in msg or "23505" in msg:
+            try:
+                supabase.table(TABLE).update(row).eq("url_key", url_key).execute()
+            except Exception as e2:
+                print(f"  Bazaga yozib bo'lmadi: {str(e2)[:120]}")
             return
-
-    # 2-usul (zaxira): indeks yo'q. Qo'lda tekshirib, yangilaymiz yoki qo'shamiz.
-    # Bu MUHIM — aks holda hech nima yozilmaydi va bot bir xil grantlarni
-    # har kuni qayta post qiladi.
-    try:
-        existing = (supabase.table(TABLE).select("id")
-                    .eq("url_key", url_key).limit(1).execute())
-        if existing.data:
-            supabase.table(TABLE).update(row).eq("url_key", url_key).execute()
-        else:
-            supabase.table(TABLE).insert(row).execute()
-    except Exception as e:
-        print(f"  Bazaga yozib bo'lmadi (zaxira usul ham): {str(e)[:120]}")
+        print(f"  Bazaga yozib bo'lmadi: {msg[:120]}")
 
 
 def get_grants_nearing_deadline(days: int = 5) -> list:
@@ -209,7 +240,7 @@ def stats() -> dict:
         return {}
     out = {}
     try:
-        for st in ("posted", "skipped"):
+        for st in ("posted", "skipped", "duplicate"):
             r = supabase.table(TABLE).select("id", count="exact").eq("status", st).limit(1).execute()
             out[st] = r.count
     except Exception:
