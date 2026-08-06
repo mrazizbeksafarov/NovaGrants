@@ -104,6 +104,18 @@ NOT_AN_OPPORTUNITY = re.compile(
     r"|top\s+\d+\s|best\s+\d+\s|\d+\s+(best|top)\s|list\s+of\s+\d+"
     r"|frequently\s+asked|faq\b|glossary|checklist"
     r"|qanday\s+(qilib|yozish)|qo'llanma|namuna\s+hujjat"
+    # ── 2026-08-06 auditida sizib o'tgani aniqlangan shakllar ────────────
+    # "How I Won a Fully Funded Study Abroad Scholarship and How You Can Too"
+    # — shaxsiy hikoya, ariza sahifasi yo'q. Eski naqsh faqat "how to" ni
+    # ushlardi.
+    r"|how\s+i\s+(won|got|landed|secured|earned)|my\s+(journey|story|experience)\s+"
+    r"|success\s+stor(y|ies)|what\s+i\s+learned"
+    # "17 International Travel, Speaking, Fellowship and Other Opportunities"
+    # — to'plam maqolasi. Sarlavha raqam bilan boshlanadi va ko'plikda tugaydi.
+    r"|^\s*\d{1,3}\s+[a-z].{0,60}\b(opportunities|scholarships|fellowships"
+    r"|internships|grants|programs|programmes|conferences|jobs)\b"
+    r"|list\s+of\s+(fully|top|best|the)|round[\s-]?up\b|weekly\s+digest"
+    r"|opportunities\s+(of|for)\s+the\s+week"
     r")",
     re.I,
 )
@@ -212,7 +224,20 @@ def extract_deadline(text: str):
                 elif pat is _DATE_PATTERNS[2]:
                     dt = _try_build(int(g[0]), int(g[1]), int(g[2]))
                 else:
-                    dt = _try_build(int(g[2]), int(g[1]), int(g[0]))
+                    # 31/12/2026 va 12/31/2026 — ikkalasi ham uchraydi.
+                    # Ilgari doim DD/MM deb o'qilardi, ya'ni amerikacha
+                    # manbalarda sana noto'g'ri chiqardi (03/12 -> 3-dekabr,
+                    # aslida 12-mart). Endi qaysi raqam 12 dan katta ekaniga
+                    # qarab hal qilamiz; ikkalasi ham <=12 bo'lsa xalqaro
+                    # ko'rinish (DD/MM) ustun, chunki manbalarimiz asosan
+                    # Yevropa va Osiyodan.
+                    a, b, year = int(g[0]), int(g[1]), int(g[2])
+                    if a > 12 >= b:
+                        dt = _try_build(year, b, a)          # DD/MM
+                    elif b > 12 >= a:
+                        dt = _try_build(year, a, b)          # MM/DD
+                    else:
+                        dt = _try_build(year, b, a)          # noaniq -> DD/MM
                 if dt and now - timedelta(days=1) <= dt <= horizon:
                     found.append(dt)
         return found

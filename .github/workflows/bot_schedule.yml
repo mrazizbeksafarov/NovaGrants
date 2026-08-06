@@ -2,8 +2,11 @@ name: Nova Grants Bot
 
 on:
   schedule:
-    # Har kuni 08:00 (Toshkent) = 03:00 UTC
-    - cron: '0 3 * * *'
+    # GitHub Actions navbatida kutadi — o'lchangan kechikish 2s42d–3s17d
+    # (2–6 avgust, 2026). Ilgari '0 3' turardi va postlar 08:00 emas, ~10:45
+    # (Toshkent) da chiqardi. 00:20 UTC + ~2s50d ≈ 03:10 UTC ≈ 08:10 Toshkent.
+    # Soat boshi yuklama cho'qqisi bo'lgani uchun 20-daqiqa tanlandi.
+    - cron: '20 0 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -35,6 +38,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      # Testlar tarmoqsiz ishlaydi va ~1 soniya oladi. Buzilgan kod kanalga
+      # chiqmasligi uchun botdan OLDIN turadi.
+      - name: Testlar
+        run: python -m pytest tests/ -q
+
+      - name: Rich blok sxemasini tekshirish
+        run: python tools/check_rich_spec.py
 
       - name: Botni ishga tushirish
         env:

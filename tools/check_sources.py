@@ -57,8 +57,27 @@ def check_telegram(src):
         return (src["id"], type(e).__name__, 0, str(e)[:60])
 
 
+def check_grantsgov(src):
+    try:
+        r = requests.post(src["url"], json={"rows": 5, "keyword": "", "oppStatuses": "posted"},
+                          headers={**HEADERS, "Content-Type": "application/json"}, timeout=20)
+        hits = r.json().get("data", {}).get("oppHits", [])
+        return (src["id"], "OK" if hits else "BO'SH", len(hits), "")
+    except Exception as e:
+        return (src["id"], type(e).__name__, 0, str(e)[:60])
+
+
 def check(src):
-    return check_rss(src) if src["type"] == "rss" else check_telegram(src)
+    # Ilgari bu yerda `rss` bo'lmagan hamma narsa telegram deb hisoblanardi va
+    # grants.gov yozuvida `KeyError: 'channel'` bilan butun skript qulardi.
+    fn = {"rss": check_rss, "telegram": check_telegram, "grantsgov": check_grantsgov}
+    handler = fn.get(src.get("type"))
+    if not handler:
+        return (src["id"], f"NOMA'LUM TUR: {src.get('type')}", 0, "")
+    try:
+        return handler(src)
+    except Exception as e:
+        return (src["id"], type(e).__name__, 0, str(e)[:60])
 
 
 if __name__ == "__main__":

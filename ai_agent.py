@@ -117,7 +117,11 @@ def _config_for(model: str) -> types.GenerateContentConfig:
         system_instruction=SYSTEM_INSTRUCTION,
         response_mime_type="application/json",
         response_schema=PostContent,
-        temperature=0.9,          # sarlavhalar har safar boshqacha bo'lishi uchun
+        # 0.9 juda yuqori edi: sarlavha xilma-xilligi uchun to'lanadigan narx —
+        # muddat, stipendiya summasi va talablardagi xatolar. 0.35 da faktlar
+        # barqaror, sarlavha esa baribir har safar boshqacha chiqadi (kirish
+        # ma'lumoti har kuni yangi).
+        temperature=0.35,
     )
 
     if model in _NO_THINKING_CONFIG:

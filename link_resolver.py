@@ -231,10 +231,20 @@ _YEAR = re.compile(r"\b(19|20)\d{2}(/(19|20)?\d{2})?\b")
 
 
 def title_fingerprint(title: str) -> str:
-    """Sarlavhadan barmoq izi — turli aggregator turlicha yozsa ham bir xil chiqadi.
+    """Sarlavhadan barmoq izi — 3-qatlam takror tekshiruvi.
 
-    "Chevening Scholarship 2026 (Fully Funded)" va "Fully Funded Chevening Scholarships UK"
-    ikkalasi ham bir xil izga tushadi.
+    Yil, tinish belgilari va umumiy so'zlar ("scholarship", "fully funded",
+    "apply now") olib tashlanadi; qolgan so'zlar to'plamidan hash olinadi.
+    Shu sabab "Erasmus Mundus Joint Master Degree 2027" va "Joint Master
+    Degree Erasmus Mundus (Fully Funded)" bir xil izga tushadi.
+
+    ATAYIN CHEKLANGAN — 2 tadan kam mazmunli so'z qolsa BO'SH qaytaradi.
+    Masalan "Chevening Scholarship 2026 (Fully Funded)" da faqat "chevening"
+    qoladi va iz berilmaydi. Sabab: bitta so'zli iz "Oxford Scholarship" bilan
+    "Oxford Fellowship" ni bitta grant deb hisoblab, haqiqiy imkoniyatni
+    jimgina yo'q qilardi. Noto'g'ri takror — o'tkazib yuborilgan takrordan
+    xavfliroq, chunki uni hech kim sezmaydi. Bunday sarlavhalar uchun
+    `url_key` qatlami ishlaydi.
     """
     if not title:
         return ""
@@ -292,41 +302,41 @@ def _score_candidate(anchor_text: str, href: str, position: float) -> int:
     return score
 
 
-def _article_root(soup: BeautifulSoup):
-    """Maqola tanasini topadi — sidebar'dagi reklamalarni chetlab o'tish uchun."""
+def _article_roots(soup: BeautifulSoup) -> list:
+    """Maqola tanasi uchun nomzodlar — birinchisidan boshlab sinab ko'riladi.
+
+    NEGA RO'YXAT, BITTA EMAS: opportunitiescircle.com Elementor'da qurilgan va
+    `div.elementor-widget-theme-post-content` ichida faqat ichki havolalar
+    bo'ladi — "Apply" tugmasi alohida vidjetda, konteynerdan TASHQARIDA.
+    Eski kod birinchi mos konteynerni tanlab, boshqa joyga qaramas edi va
+    natijada bu manbadan 8 tadan 8 tasi "havola topilmadi" bo'lardi (jonli
+    o'lchandi). Endi tor doiradan boshlab, natija bo'lmasa kengaytiramiz.
+    """
+    roots, seen = [], set()
+
+    def add(node):
+        # BeautifulSoup teglarini `==` bilan solishtirish MAZMUN bo'yicha
+        # ishlaydi va sekin — shuning uchun aynanlik (id) bo'yicha tekshiramiz.
+        if node is None or id(node) in seen:
+            return
+        seen.add(id(node))
+        roots.append(node)
+
     for sel in ("article", "div.entry-content", "div.post-content", "div.td-post-content",
                 "div.single-content", "div.content-area", "div.elementor-widget-theme-post-content",
                 "main"):
         node = soup.select_one(sel)
         if node and len(node.get_text(strip=True)) > 200:
-            return node
-    return soup.body or soup
+            add(node)
+
+    add(soup.body or soup)                       # oxirgi chora: butun sahifa
+    return roots
 
 
-def find_original_link(article_url: str) -> tuple:
-    """Aggregator maqolasidan grantning rasmiy havolasini topadi.
-
-    Qaytaradi: (havola, anchor_bahosi). Topilmasa ("", 0).
-    Baho keyinchalik link_matches_title() da ishlatiladi — kuchli anchor
-    ("Apply now", "Rasmiy veb-sayt") so'z mosligi talabini bekor qiladi.
-    """
-    resp = _get(article_url)
-    if resp is None or resp.status_code != 200:
-        code = resp.status_code if resp is not None else "ulanmadi"
-        print(f"    ! {host_of(article_url)} javob bermadi ({code})")
-        return "", 0
-
-    try:
-        soup = BeautifulSoup(resp.text, "html.parser")
-    except Exception:
-        return "", 0
-
-    root = _article_root(soup)
+def _collect_candidates(root, article_url: str, source_host: str) -> tuple:
+    """Berilgan konteynerdagi havolalarni baholab, ikki ro'yxatga ajratadi:
+    (tashqi_havolalar, ichki_o'tish_havolalari) — ikkalasi ham (baho, url)."""
     anchors = root.find_all("a", href=True)
-    if not anchors:
-        return "", 0
-
-    source_host = host_of(article_url)
     external, internal_redirects = [], []
 
     for i, a in enumerate(anchors):
@@ -350,6 +360,40 @@ def find_original_link(article_url: str) -> tuple:
             continue
 
         external.append((score, href))
+
+    return external, internal_redirects
+
+
+def find_original_link(article_url: str) -> tuple:
+    """Aggregator maqolasidan grantning rasmiy havolasini topadi.
+
+    Qaytaradi: (havola, anchor_bahosi). Topilmasa ("", 0).
+    Baho keyinchalik link_matches_title() da ishlatiladi — kuchli anchor
+    ("Apply now", "Rasmiy veb-sayt") so'z mosligi talabini bekor qiladi.
+    """
+    resp = _get(article_url)
+    if resp is None or resp.status_code != 200:
+        code = resp.status_code if resp is not None else "ulanmadi"
+        print(f"    ! {host_of(article_url)} javob bermadi ({code})")
+        return "", 0
+
+    try:
+        soup = BeautifulSoup(resp.text, "html.parser")
+    except Exception:
+        return "", 0
+
+    source_host = host_of(article_url)
+
+    # Tor konteynerdan boshlaymiz (sidebar reklamalari tushmasin), tashqi
+    # havola topilmasa kengroq doiraga o'tamiz.
+    external, internal_redirects = [], []
+    for root in _article_roots(soup):
+        external, internal_redirects = _collect_candidates(root, article_url, source_host)
+        if external:
+            break
+
+    if not external and not internal_redirects:
+        return "", 0
 
     for pool in (external, internal_redirects):
         if not pool:

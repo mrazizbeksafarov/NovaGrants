@@ -129,14 +129,16 @@ def count_blocks(blocks):
 
 
 if __name__ == "__main__":
+    # Havolalar HAR XIL bo'lishi shart — post_builder.usable_cards() bir xil
+    # URL li kartochkalarni takror deb tashlaydi.
     cards = [{
-        "name": "Chevening Scholarships 2027",
-        "url": "https://www.chevening.org/apply/",
+        "name": f"Chevening Scholarships 202{i}",
+        "url": f"https://www.chevening.org/apply/?year=202{i}&lang=uz",
         "summary": "Buyuk Britaniyada to'liq moliyalashtiriladigan magistratura.",
         "benefits": ["O'qish to'lovi to'liq", "Oylik stipendiya", "Aviabilet"],
         "eligibility": "O'zbekiston fuqarolari",
         "deadline_iso": "2026-11-05T23:59:59Z",
-    }] * 4
+    } for i in range(4, 8)]
 
     blocks, html = build_post("Bu haftaning imkoniyatlari", cards)
 
