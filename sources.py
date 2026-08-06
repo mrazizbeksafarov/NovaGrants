@@ -11,9 +11,24 @@ Maydonlar:
             "aggregator" : maqola ichidan ASL havola qazib olinadi
   region  — geografiya
   topic   — scholarship | fellowship | research | grant | ngo | arts | startup
+  pages   — WordPress feed uchun nechta sahifa o'qiladi (ixtiyoriy, sukut 1)
 
 MUHIM: "aggregator" manbaning o'z havolasi HECH QACHON kanalga tushmaydi.
 link_resolver.py maqolani ochib, grantning rasmiy saytini topib beradi.
+
+── SAHIFALASH (2026-08-06 da o'lchandi) ──────────────────────────────────
+WordPress feed'lari bir sahifada atigi 10 ta yozuv beradi, lekin `?paged=2`
+va `?paged=3` yana 10 tadan NOYOB yozuv qaytaradi. Ya'ni bitta ishonchli
+manbadan 10 emas, 30 ta yozuv olish mumkin. Bu — yangi manba qidirishdan
+ko'ra arzon va aniqroq yo'l, chunki manbalar allaqachon tekshirilgan.
+
+── NEGA RASMIY MANBALAR KAM ──────────────────────────────────────────────
+40+ rasmiy sayt tekshirildi (chevening.org, daad.de, britishcouncil.org,
+turkiyeburslari.gov.tr, stipendiumhungaricum.hu, euraxess, salto-youth,
+unjobs, jobs.ac.uk, mastersportal va h.k.) — 2026-yilda ularning deyarli
+hech birida ishlaydigan RSS yo'q (404, JS bilan yuklanadigan sahifa yoki
+bot himoyasi). Ishlayotgan kam sonlisi DISABLED da sababi bilan yozilgan.
+Shu sabab qamrov aggregatorlar + sahifalash orqali kengaytirildi.
 """
 
 SOURCES = [
@@ -48,47 +63,47 @@ SOURCES = [
     # ══════════════════════════════════════════════════════════════════════
     # AGGREGATORLAR — ichidan ASL havola qazib olinadi
     # ══════════════════════════════════════════════════════════════════════
+    # `pages: 3` — jonli o'lchangan: har sahifa 10 tadan NOYOB yozuv beradi.
     {"id": "opportunitydesk", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://opportunitydesk.org/feed/"},
-
-    {"id": "opps4youth", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
-     "url": "https://opportunitiesforyouth.org/feed/"},
+     "url": "https://opportunitydesk.org/feed/", "pages": 3},
 
     {"id": "oyaop", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://oyaop.com/feed/"},
+     "url": "https://oyaop.com/feed/", "pages": 3},
 
     {"id": "oppscircle", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://opportunitiescircle.com/feed/"},
+     "url": "https://opportunitiescircle.com/feed/", "pages": 3},
 
     {"id": "scholarshiproar", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://scholarshiproar.com/feed/"},
-
-    {"id": "scholarshipregion", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://scholarshipregion.com/feed/"},
-
-    {"id": "fellowshipbard", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
-     "url": "https://fellowshipbard.com/feed/"},
+     "url": "https://scholarshiproar.com/feed/", "pages": 3},
 
     {"id": "profellow", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
-     "url": "https://www.profellow.com/feed/"},
+     "url": "https://www.profellow.com/feed/", "pages": 2},
 
     {"id": "oppscorners", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://opportunitiescorners.com/feed/"},
+     "url": "https://opportunitiescorners.com/feed/", "pages": 2},
 
     {"id": "mladiinfo", "type": "rss", "kind": "aggregator", "region": "EU", "topic": "fellowship",
-     "url": "https://www.mladiinfo.eu/feed/"},
+     "url": "https://www.mladiinfo.eu/feed/", "pages": 2},
 
     {"id": "opps4africans", "type": "rss", "kind": "aggregator", "region": "Africa", "topic": "scholarship",
-     "url": "https://www.opportunitiesforafricans.com/feed/"},
-
-    {"id": "terravivagrants", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "ngo",
-     "url": "https://terravivagrants.org/feed/"},
-
-    {"id": "fundsforngos", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "ngo",
-     "url": "https://www.fundsforngos.org/feed/"},
+     "url": "https://www.opportunitiesforafricans.com/feed/", "pages": 2},
 
     {"id": "grantlar.uz", "type": "rss", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
-     "url": "https://grantlar.uz/feed/"},
+     "url": "https://grantlar.uz/feed/", "pages": 2},
+
+    # 2026-08-06 da topilgan va tekshirilgan: 10 ta yozuv, o'sha kungi.
+    {"id": "scholarshipunion", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
+     "url": "https://scholarshipunion.com/feed/", "pages": 2},
+
+    # ── RASMIY (qazish shart emas) ──────────────────────────────────────
+    # O'zbekiston uchun Fulbright, UGRAD, professional almashuv dasturlari.
+    # 2026-08-06: 10 ta yozuv, 1 kunlik. Eng aniq manbalardan biri.
+    {"id": "usembassy-uz", "type": "rss", "kind": "official", "region": "UZ", "topic": "scholarship",
+     "url": "https://uz.usembassy.gov/feed/"},
+
+    # Yevropa Ittifoqining yoshlar portali — almashuv, korpus, tanlovlar.
+    {"id": "youth-europa", "type": "rss", "kind": "official", "region": "EU", "topic": "grant",
+     "url": "https://youth.europa.eu/rss.xml"},
 
     # ══════════════════════════════════════════════════════════════════════
     # TELEGRAM — O'zbekiston
@@ -114,23 +129,27 @@ SOURCES = [
     {"id": "tg:startupbaseuz", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "startup",
      "channel": "startupbaseuz"},
 
+    # 2026-08-06 da qo'shildi. Har uchalasi o'sha kuni faol edi.
+    {"id": "tg:grantgo", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
+     "channel": "grantgouz"},          # 20/20 postda tashqi havola
+
+    {"id": "tg:oliygoh", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
+     "channel": "oliygoh_grantlar"},   # 19/20 postda tashqi havola
+
+    {"id": "tg:joinyouth", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "grant",
+     "channel": "joinyouthuz"},        # 17/20 postda tashqi havola
+
     # ══════════════════════════════════════════════════════════════════════
     # TELEGRAM — Global
     # ══════════════════════════════════════════════════════════════════════
     {"id": "tg:globalscholar", "type": "telegram", "kind": "aggregator", "region": "Global", "topic": "scholarship",
      "channel": "theglobalscholarship"},
 
-    {"id": "tg:intlopps", "type": "telegram", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "channel": "internationalopportunities"},
-
     {"id": "tg:scholarshipregion", "type": "telegram", "kind": "aggregator", "region": "Global", "topic": "scholarship",
      "channel": "scholarshipregion"},
 
-    {"id": "tg:globalopps", "type": "telegram", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "channel": "globalopportunities"},
-
-    {"id": "tg:ru_grants", "type": "telegram", "kind": "aggregator", "region": "CIS", "topic": "scholarship",
-     "channel": "grantsandscholarships"},
+    {"id": "tg:scholarshipscorner", "type": "telegram", "kind": "aggregator", "region": "Global", "topic": "scholarship",
+     "channel": "scholarshipscorner"},  # 20/20 postda tashqi havola
 ]
 
 
@@ -138,6 +157,35 @@ SOURCES = [
 # O'CHIRILGAN MANBALAR — nima uchun olib tashlanganini eslab qolish uchun
 # ══════════════════════════════════════════════════════════════════════════
 DISABLED = {
+    # ── 2026-08-06 auditida olib tashlanganlar ────────────────────────────
+    # O'LIK TELEGRAM KANALLARI. Scraper sanaga qaramagani uchun bular 5 yillik
+    # e'lonlarni "yangi imkoniyat" sifatida quvurga tiqib turgan edi.
+    "tg:globalopportunities":       "O'lik — oxirgi post 2021-01-04 (5.6 yil)",
+    "tg:grantsandscholarships":     "O'lik — oxirgi post 2021-05-13 (5.2 yil)",
+    "tg:internationalopportunities": "So'nayotgan — oxirgi post 2026-04-16",
+
+    # TEXNIK
+    "fellowshipbard.com/feed":      "ConnectTimeout — sayt javob bermaydi",
+    "opportunitiesforyouth.org":    "HTTP 429 — feed ham, maqolalari ham. "
+                                    "Qazish bosqichida har safar bloklanadi",
+    "scholarshipscorner.website":   "Ulanmaydi — tg:scholarshipscorner o'z saytiga havola qiladi",
+    "scholarshipregion.com/feed":   "HTTP 202 (Cloudflare) — Telegram varianti ishlatiladi",
+
+    # MAVZU: NGO/tashkilot grantlari. AI ga "institutsional grantlarni tashla"
+    # deb aytilgan, ya'ni bu ikkisi deyarli faqat tarmoq va token isrofi edi
+    # (bir yurishda 29 ta yozuv berib, deyarli hammasi rad etilardi).
+    "terravivagrants.org":          "NGO/tashkilot grantlari — jismoniy shaxs uchun emas",
+    "fundsforngos.org":             "NGO/tashkilot grantlari + 'Sample Proposal' maqolalari",
+
+    # 2026-08-06 da tekshirilgan, RSS'i yo'q rasmiy saytlar (JS yoki 404):
+    "chevening.org / daad.de":      "RSS yo'q — sahifa JS bilan yuklanadi",
+    "britishcouncil.org":           "ReadTimeout, RSS topilmadi",
+    "turkiyeburslari / stipendiumhungaricum": "RSS yo'q yoki bo'sh WordPress",
+    "euraxess / salto-youth / eurodesk": "HTTP 403/404 — feed olib tashlangan",
+    "unjobs / jobs.ac.uk / mastersportal": "RSS yo'q",
+    "api.reliefweb.int":            "v1 o'chirilgan (410), v2 ro'yxatdan o'tish talab qiladi",
+    "ec.europa.eu funding-tenders": "API kalit talab qiladi (403/500)",
+
     # Feed o'lgan / bot himoyasi (2026-08-04 holatiga)
     "scholars4dev.com/feed":        "RSS bo'sh qaytadi (0 ta yozuv)",
     "youthop.com/feed":             "HTTP 404 — feed olib tashlangan",

@@ -15,7 +15,9 @@ Har bir yozuv quyidagi ko'rinishda qaytadi:
 """
 
 import re
+import time
 import concurrent.futures
+from datetime import datetime, timezone, timedelta
 
 import feedparser
 import requests
@@ -25,8 +27,16 @@ from sources import enabled_sources
 from link_resolver import clean_url, url_key, is_blocked, is_aggregator, host_of
 
 TIMEOUT = 25
-MAX_PER_SOURCE = 20          # bitta manbadan ko'pi bilan shuncha yangi yozuv
+MAX_PER_SOURCE = 60          # bitta manbadan ko'pi bilan shuncha yangi yozuv
 SUMMARY_LIMIT = 1500
+MAX_RETRY = 2                # 429 / vaqtinchalik xatolarda qayta urinish
+
+# ── YANGILIK CHEGARASI ────────────────────────────────────────────────────
+# Ilgari na RSS, na Telegram uchun sana tekshirilmasdi. Natijada 2021-yilda
+# to'xtab qolgan kanallar 5 yillik postlarini "yangi imkoniyat" sifatida
+# quvurga tiqib turardi (jonli auditda tasdiqlandi). Sanasi noma'lum yozuv
+# o'tkaziladi — ko'p feed'da sana bo'lmaydi va uni tashlash zarar keltiradi.
+MAX_AGE_DAYS = 60
 
 HEADERS = {
     "User-Agent": (
@@ -57,43 +67,105 @@ def _clean_html(raw: str) -> str:
 # ──────────────────────────────────────────────────────────────────────
 # RSS
 # ──────────────────────────────────────────────────────────────────────
+def _entry_age_days(entry):
+    """Yozuv necha kunlik. Sana yo'q bo'lsa None."""
+    for key in ("published_parsed", "updated_parsed"):
+        t = entry.get(key)
+        if t:
+            try:
+                dt = datetime(*t[:6], tzinfo=timezone.utc)
+                return (datetime.now(timezone.utc) - dt).days
+            except Exception:
+                continue
+    return None
+
+
+def _fetch_feed(url, source_id):
+    """Feed'ni oladi. 429 va vaqtinchalik xatolarda qayta uriniladi."""
+    for attempt in range(MAX_RETRY + 1):
+        try:
+            resp = _session.get(url, timeout=TIMEOUT)
+        except Exception as e:
+            if attempt < MAX_RETRY:
+                time.sleep(3 * (attempt + 1))
+                continue
+            print(f"  [{source_id}] xatolik: {type(e).__name__}")
+            return None
+
+        if resp.status_code == 200:
+            return feedparser.parse(resp.content)
+
+        # 429/503 — sayt bizni sekinlashtirmoqchi, biroz kutamiz
+        if resp.status_code in (429, 503) and attempt < MAX_RETRY:
+            retry_after = resp.headers.get("Retry-After", "")
+            delay = float(retry_after) if retry_after.isdigit() else 5.0 * (attempt + 1)
+            time.sleep(min(delay, 20))
+            continue
+
+        print(f"  [{source_id}] HTTP {resp.status_code}")
+        return None
+    return None
+
+
 def scrape_rss(src):
     out = []
-    try:
-        resp = _session.get(src["url"], timeout=TIMEOUT)
-        if resp.status_code != 200:
-            print(f"  [{src['id']}] HTTP {resp.status_code}")
-            return out
-        feed = feedparser.parse(resp.content)
-    except Exception as e:
-        print(f"  [{src['id']}] xatolik: {type(e).__name__}")
-        return out
+    seen_links = set()
+    stale = 0
 
-    if not feed.entries:
-        print(f"  [{src['id']}] feed bo'sh")
-        return out
+    # WordPress feed'lari sahifada 10 ta beradi; ?paged=N yana 10 tadan
+    # NOYOB yozuv qaytaradi (jonli o'lchandi). Shu bilan ishonchli manbadan
+    # yangi manba qidirmasdan 3 barobar ko'proq qamrov olamiz.
+    pages = max(1, int(src.get("pages", 1)))
 
-    for entry in feed.entries[:MAX_PER_SOURCE]:
-        link = clean_url(entry.get("link", ""))
-        if not link:
-            continue
-        summary = entry.get("summary") or entry.get("description") or ""
-        # to'liq matn bo'lsa (content:encoded) — undan foydalanamiz, deadline shu yerda bo'ladi
-        if entry.get("content"):
-            try:
-                summary = entry["content"][0].get("value", summary)
-            except Exception:
-                pass
-        out.append({
-            "source_id": src["id"],
-            "kind": src["kind"],
-            "topic": src.get("topic", ""),
-            "title": _clean_html(entry.get("title", "")).strip(),
-            "url": link,
-            "summary": _clean_html(summary)[:SUMMARY_LIMIT],
-        })
+    for page in range(1, pages + 1):
+        if page == 1:
+            url = src["url"]
+        else:
+            sep = "&" if "?" in src["url"] else "?"
+            url = f"{src['url']}{sep}paged={page}"
+        feed = _fetch_feed(url, src["id"])
+        if feed is None:
+            break
+        if not feed.entries:
+            if page == 1:
+                print(f"  [{src['id']}] feed bo'sh")
+            break
 
-    print(f"  [{src['id']}] {len(out)} ta yozuv")
+        for entry in feed.entries:
+            if len(out) >= MAX_PER_SOURCE:
+                break
+            link = clean_url(entry.get("link", ""))
+            if not link or link in seen_links:
+                continue
+
+            age = _entry_age_days(entry)
+            if age is not None and age > MAX_AGE_DAYS:
+                stale += 1
+                continue
+
+            seen_links.add(link)
+            summary = entry.get("summary") or entry.get("description") or ""
+            # to'liq matn bo'lsa (content:encoded) — undan foydalanamiz, deadline shu yerda bo'ladi
+            if entry.get("content"):
+                try:
+                    summary = entry["content"][0].get("value", summary)
+                except Exception:
+                    pass
+            out.append({
+                "source_id": src["id"],
+                "kind": src["kind"],
+                "topic": src.get("topic", ""),
+                "title": _clean_html(entry.get("title", "")).strip(),
+                "url": link,
+                "summary": _clean_html(summary)[:SUMMARY_LIMIT],
+            })
+
+        if len(out) >= MAX_PER_SOURCE:
+            break
+
+    note = f" ({stale} tasi eskirgan)" if stale else ""
+    if out or stale:
+        print(f"  [{src['id']}] {len(out)} ta yozuv{note}")
     return out
 
 
@@ -126,6 +198,20 @@ def _telegram_title(text: str) -> str:
     # Mazmunli qator topilmadi — butun matndan boshini olamiz
     flat = re.sub(r"\s+", " ", _DECOR.sub("", text)).strip()
     return (flat[:107].rsplit(" ", 1)[0] + "...") if len(flat) > 110 else (flat or "Imkoniyat")
+
+
+def _post_age_days(wrap):
+    """Telegram postining yoshi (kunlarda). Sana topilmasa None."""
+    tag = wrap.find("time", attrs={"datetime": True})
+    if not tag:
+        return None
+    try:
+        dt = datetime.fromisoformat(tag["datetime"].replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - dt).days
+    except Exception:
+        return None
+
+
 def scrape_telegram(src):
     ch = src["channel"]
     out = []
@@ -139,6 +225,7 @@ def scrape_telegram(src):
         print(f"  [{src['id']}] xatolik: {type(e).__name__}")
         return out
 
+    stale = 0
     wrappers = soup.find_all("div", class_="tgme_widget_message")
     for wrap in wrappers[-MAX_PER_SOURCE:]:
         body = wrap.find("div", class_="tgme_widget_message_text")
@@ -150,6 +237,13 @@ def scrape_telegram(src):
 
         date_tag = wrap.find("a", class_="tgme_widget_message_date")
         post_link = date_tag.get("href") if date_tag else f"https://t.me/{ch}"
+
+        # Post sanasi. Kanal to'xtab qolgan bo'lsa (masalan 2021-yilda),
+        # eski postlar "yangi imkoniyat" bo'lib o'tib ketmasligi kerak.
+        age = _post_age_days(wrap)
+        if age is not None and age > MAX_AGE_DAYS:
+            stale += 1
+            continue
 
         # Post ichidagi TASHQI havola — aynan shu grantning asl manzili bo'lishi mumkin
         direct = ""
@@ -177,7 +271,8 @@ def scrape_telegram(src):
             "summary": text[:SUMMARY_LIMIT],
         })
 
-    print(f"  [{src['id']}] {len(out)} ta post")
+    note = f" ({stale} tasi eskirgan)" if stale else ""
+    print(f"  [{src['id']}] {len(out)} ta post{note}")
     return out
 
 
