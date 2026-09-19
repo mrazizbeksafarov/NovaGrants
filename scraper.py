@@ -41,11 +41,12 @@ MAX_AGE_DAYS = 60
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     ),
-    "Accept": "application/rss+xml, application/xml, text/html;q=0.9, */*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
 
 # Brauzer TLS izi bilan ishlaydigan mijoz. Bir qancha sayt oddiy `requests`
 # ga umuman javob bermaydi (chevening.org, britishcouncil.org,
