@@ -39,6 +39,7 @@ load_dotenv()
 
 TABLE = "posted_grants"
 CHUNK = 100                  # bitta so'rovda nechta kalit tekshiriladi
+HAS_SEMANTIC_SLUG = False
 
 _url = str(os.getenv("SUPABASE_URL", "")).strip()
 _key = str(os.getenv("SUPABASE_KEY", "")).strip()
@@ -60,6 +61,7 @@ def init_db(strict: bool = True) -> bool:
                    baza ishlamasa kanalga takror post yog'ilishi mumkin).
     strict=False — ogohlantiradi va False qaytaradi (quruq sinov uchun).
     """
+    global HAS_SEMANTIC_SLUG
     if not supabase:
         print("Baza sozlanmagan.")
         if strict:
@@ -90,15 +92,25 @@ def init_db(strict: bool = True) -> bool:
             sys.exit(1)
         return False
 
+    try:
+        supabase.table(TABLE).select("semantic_slug").limit(1).execute()
+        HAS_SEMANTIC_SLUG = True
+    except Exception:
+        HAS_SEMANTIC_SLUG = False
+        print("Eslatma: 'semantic_slug' ustuni bazada mavjud emas (migration.sql orqali qo'shish tavsiya etiladi).")
+
     print("Baza tayyor.")
     return True
 
 
 def _collect(column: str, values: list) -> set:
     """Berilgan ustun bo'yicha bazada allaqachon bor qiymatlarni qaytaradi."""
+    global HAS_SEMANTIC_SLUG
     found = set()
     values = [v for v in values if v]
     if not supabase or not values:
+        return found
+    if column == "semantic_slug" and not HAS_SEMANTIC_SLUG:
         return found
 
     uniq = list(dict.fromkeys(values))
@@ -110,6 +122,10 @@ def _collect(column: str, values: list) -> set:
                 if row.get(column):
                     found.add(row[column])
         except Exception as e:
+            err_msg = str(e).lower()
+            if column == "semantic_slug" and ("does not exist" in err_msg or "42703" in err_msg):
+                HAS_SEMANTIC_SLUG = False
+                return found
             # Bazani o'qib bo'lmasa — to'xtaymiz. Aks holda hamma narsa
             # "yangi" ko'rinib, kanalga takror post yog'iladi.
             print(f"Bazani o'qishda xatolik ({column}): {e}")
@@ -190,7 +206,7 @@ def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted",
         "fingerprint": grant.get("fingerprint", ""),
         "status": status,
     }
-    if grant.get("semantic_slug"):
+    if HAS_SEMANTIC_SLUG and grant.get("semantic_slug"):
         row["semantic_slug"] = grant.get("semantic_slug")
     if deadline_iso:
         row["deadline"] = deadline_iso
