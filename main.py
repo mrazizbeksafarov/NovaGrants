@@ -26,8 +26,8 @@ from filters import (
 from link_resolver import resolve_grant, is_aggregator, is_blocked
 from database import (
     init_db, get_seen_source_keys, get_seen_url_keys, get_seen_fingerprints,
-    save_grant as _save_grant, get_grants_nearing_deadline,
-    mark_reminder_sent as _mark_reminder_sent, stats,
+    save_grant as _save_grant, save_grants_batch as _save_grants_batch,
+    get_grants_nearing_deadline, mark_reminder_sent as _mark_reminder_sent, stats,
 )
 from ai_agent import generate_post_content, BATCH_SIZE
 from post_builder import build_post
@@ -38,9 +38,9 @@ from telegram_bot import (
     notify_admin,
 )
 
-MAX_RESOLVE_PER_RUN = 70     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
+MAX_RESOLVE_PER_RUN = 80     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
 MAX_POST_PER_RUN = 32        # bir kunda kanalga nechta yangi imkoniyat (4 ta post)
-RESOLVE_WORKERS = 5          # parallel oqim (saytlarni bezovta qilmaslik uchun kam)
+RESOLVE_WORKERS = 14         # superkompyuter parallel oqimlari (har bir domen alohida throttle nazoratida)
 
 # Quruq sinov: hech narsa yuborilmaydi va bazaga yozilmaydi.
 #   python main.py --dry-run     yoki     DRY_RUN=1
@@ -59,6 +59,12 @@ def save_grant(grant, deadline_iso=None, status="posted", key=None):
     if DRY_RUN or not DB_READY:
         return
     _save_grant(grant, deadline_iso=deadline_iso, status=status, key=key)
+
+
+def save_grants_batch(items_with_meta):
+    if DRY_RUN or not DB_READY:
+        return
+    _save_grants_batch(items_with_meta)
 
 
 def seen_source_keys(keys):
@@ -225,8 +231,8 @@ def resolve_links(items):
     log(f"── Asl havola topildi: {len(ok)}/{len(resolved)} ta ({time.time() - started:.0f}s)")
 
     # Topilmaganlarni belgilab qo'yamiz — ertaga qayta urinmaslik uchun
-    for g in failed:
-        save_grant(g, status="skipped")
+    if failed:
+        save_grants_batch([{"grant": g, "status": "skipped"} for g in failed])
 
     return ok
 
@@ -253,6 +259,7 @@ def deduplicate(items):
 
     unique, batch_urls, batch_fps, batch_slugs = [], set(), set(), set()
     dropped_db, dropped_batch = 0, 0
+    duplicates_to_save = []
 
     for g in items:
         uk = g.get("url_key", "")
@@ -261,7 +268,7 @@ def deduplicate(items):
 
         if uk in seen_urls or (fp and fp in seen_fps) or (slug and slug in seen_slugs):
             dropped_db += 1
-            save_grant(g, status="duplicate", key=g.get("source_key"))
+            duplicates_to_save.append({"grant": g, "status": "duplicate", "key": g.get("source_key")})
             continue
 
         if uk in batch_urls or (fp and fp in batch_fps) or (slug and slug in batch_slugs):
@@ -274,6 +281,9 @@ def deduplicate(items):
         if slug:
             batch_slugs.add(slug)
         unique.append(g)
+
+    if duplicates_to_save:
+        save_grants_batch(duplicates_to_save)
 
     log(f"── Takrorlar tashlandi: bazada bor {dropped_db} ta, shu yurishda takror {dropped_batch} ta")
     log(f"── Post uchun qoldi: {len(unique)} ta")
@@ -311,8 +321,7 @@ def publish(items):
 
         if not content or not content.get("cards"):
             log("   AI bu to'plamdan mos imkoniyat topmadi.")
-            for g in batch:
-                save_grant(g, deadline_iso=g.get("deadline_iso"), status="skipped")
+            save_grants_batch([{"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"} for g in batch])
             continue
 
         usage = content.get("usage") or {}
@@ -330,6 +339,7 @@ def publish(items):
         # AI tanlagan imkoniyatlar — "posted", tanlanmaganlari — "skipped".
         # Ikkalasi ham bazaga tushadi, shunda ertaga qayta ishlanmaydi.
         chosen = {c["_source"]["url"]: c for c in cards if c.get("_source")}
+        batch_saves = []
 
         for g in batch:
             card = chosen.get(g["url"])
@@ -337,11 +347,12 @@ def publish(items):
                 # AI bergan sanani tekshiramiz — o'tib ketgan bo'lsa o'zimiznikiga qaytamiz
                 deadline = (validate_deadline_iso(card.get("deadline_iso"))
                             or g.get("deadline_iso"))
-                save_grant(g, deadline_iso=deadline, status="posted")
+                batch_saves.append({"grant": g, "deadline_iso": deadline, "status": "posted"})
                 posted += 1
             else:
-                save_grant(g, deadline_iso=g.get("deadline_iso"), status="skipped")
+                batch_saves.append({"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"})
 
+        save_grants_batch(batch_saves)
         log(f"   ✅ {len(chosen)} ta post qilindi, {len(batch) - len(chosen)} tasi rad etildi.")
 
     if tokens:

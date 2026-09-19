@@ -345,7 +345,7 @@ def fetch_all():
     print(f"Ma'lumot yig'ilmoqda — {len(srcs)} ta manba...")
 
     collected = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
         for batch in ex.map(_fetch_one, srcs):
             collected.extend(batch)
 
