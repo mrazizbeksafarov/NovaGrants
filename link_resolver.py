@@ -51,7 +51,19 @@ AGGREGATORS = {
     "scholarshipregion.com", "fellowshipbard.com", "scholarshipunion.com", "freeeducator.com",
     "scholarshipfellow.com", "opportunitydesk.info", "youthopportunities.info",
     # O'zbek aggregatorlari — bular ham "qayta hikoya" qiladi
-    "edugrants.uz", "grantss.uz", "stipendiya.uz", "grantlar.info",
+    "edugrants.uz", "grantss.uz", "stipendiya.uz", "grantlar.info", "oliygoh.uz",
+    "grantgo.uz", "joinyouth.uz", "startupbase.uz", "theglobalscholarship.org",
+    "globalscholarship.com", "scholarshipscorner.com",
+}
+
+# Nufuzli rasmiy grant va dasturlar domenlari (darhol ishoniladi)
+KNOWN_OFFICIAL_DOMAINS = {
+    "chevening.org", "daad.de", "daad-uzbekistan.org", "turkiyeburslari.gov.tr",
+    "stipendiumhungaricum.hu", "fulbrightonline.org", "usembassy.gov",
+    "eyuf.uz", "yoshlar.gov.uz", "it-park.uz", "mininnovation.uz",
+    "edu.uz", "studyinkorea.go.kr", "campuschina.org", "erasmus-plus.ec.europa.eu",
+    "youth.europa.eu", "mfa.gov.hu", "mext.go.jp", "visegradfund.org",
+    "si.se", "sbfi.admin.ch", "britishcouncil.org", "cambridge.org", "ox.ac.uk", "harvard.edu"
 }
 
 # Hech qachon "asl havola" bo'la olmaydi: ijtimoiy tarmoq, reklama, share tugmalari.
@@ -534,11 +546,31 @@ def resolve_grant(grant: dict) -> dict:
     for _ in range(MAX_HOPS):
         found, score = find_original_link(current)
         if not found:
-            return grant
+            break
         if not is_aggregator(found):
-            accept(found, anchor_score=score)
-            return grant
+            if accept(found, anchor_score=score):
+                return grant
         current = found                           # yana aggregator — chuqurroq qazamiz
+
+    # Agar hali ham asl havola topilmagan bo'lsa — Gemini AI flagman modeli orqali sinaymiz
+    if not grant.get("url"):
+        try:
+            from ai_agent import resolve_official_url_with_ai
+            resp = _session.get(start, timeout=TIMEOUT)
+            if resp and resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                candidates = []
+                for a in soup.find_all("a", href=True):
+                    h = a["href"].strip()
+                    if h.startswith(("http://", "https://")) and not is_blocked(h) and not is_aggregator(h):
+                        if h not in candidates:
+                            candidates.append(h)
+                if candidates:
+                    ai_url = resolve_official_url_with_ai(title, grant.get("summary", ""), candidates)
+                    if ai_url and not is_aggregator(ai_url) and not is_blocked(ai_url):
+                        accept(clean_url(ai_url), anchor_score=STRONG_ANCHOR_SCORE)
+        except Exception:
+            pass
 
     return grant
 

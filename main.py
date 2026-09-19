@@ -232,33 +232,47 @@ def resolve_links(items):
 
 
 def deduplicate(items):
-    """5-bosqich: asl havola va sarlavha izi bo'yicha takrorlarni tashlash."""
+    """5-bosqich: asl havola, semantik slug va sarlavha izi bo'yicha takrorlarni tashlash."""
+    from database import make_semantic_slug, get_seen_semantic_slugs
+    from link_resolver import host_of, is_aggregator
+
+    # Har bir grant uchun semantik slug tayyorlaymiz va agregatorlarni suzamiz
+    clean_items = []
+    for g in items:
+        u = g.get("url", "")
+        if not u or is_aggregator(u):
+            continue
+        if not g.get("semantic_slug"):
+            g["semantic_slug"] = make_semantic_slug(g.get("title", ""), host_of(u), g.get("deadline_iso"))
+        clean_items.append(g)
+
+    items = clean_items
     seen_urls = seen_url_keys([g["url_key"] for g in items])
     seen_fps = seen_fingerprints([g["fingerprint"] for g in items if g.get("fingerprint")])
+    seen_slugs = get_seen_semantic_slugs([g["semantic_slug"] for g in items if g.get("semantic_slug")]) if DB_READY else set()
 
-    unique, batch_urls, batch_fps = [], set(), set()
+    unique, batch_urls, batch_fps, batch_slugs = [], set(), set(), set()
     dropped_db, dropped_batch = 0, 0
 
     for g in items:
-        uk, fp = g.get("url_key", ""), g.get("fingerprint", "")
+        uk = g.get("url_key", "")
+        fp = g.get("fingerprint", "")
+        slug = g.get("semantic_slug", "")
 
-        if uk in seen_urls or (fp and fp in seen_fps):
+        if uk in seen_urls or (fp and fp in seen_fps) or (slug and slug in seen_slugs):
             dropped_db += 1
-            # DIQQAT: bu yerda grantning O'Z qatoriga tegmaymiz. Qator bazada
-            # allaqachon bor va u "posted" bo'lishi mumkin — uni "skipped" qilib
-            # qo'ysak, muddat va eslatma belgisi yo'qoladi. Shuning uchun faqat
-            # MANBA MAQOLASI kaliti bilan alohida qator yozamiz: ertaga o'sha
-            # aggregator maqolasi qayta ochilmaydi, grant esa buzilmaydi.
             save_grant(g, status="duplicate", key=g.get("source_key"))
             continue
 
-        if uk in batch_urls or (fp and fp in batch_fps):
+        if uk in batch_urls or (fp and fp in batch_fps) or (slug and slug in batch_slugs):
             dropped_batch += 1
             continue
 
         batch_urls.add(uk)
         if fp:
             batch_fps.add(fp)
+        if slug:
+            batch_slugs.add(slug)
         unique.append(g)
 
     log(f"── Takrorlar tashlandi: bazada bor {dropped_db} ta, shu yurishda takror {dropped_batch} ta")

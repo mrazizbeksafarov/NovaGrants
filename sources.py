@@ -85,27 +85,21 @@ SOURCES = [
     {"id": "mladiinfo", "type": "rss", "kind": "aggregator", "region": "EU", "topic": "fellowship",
      "url": "https://www.mladiinfo.eu/feed/", "pages": 2},
 
+    # O'zbekiston fuqarolari uchun mo'ljallanmagan (Afrika davlatlari uchun) — o'chiq
     {"id": "opps4africans", "type": "rss", "kind": "aggregator", "region": "Africa", "topic": "scholarship",
-     "url": "https://www.opportunitiesforafricans.com/feed/", "pages": 2},
+     "url": "https://www.opportunitiesforafricans.com/feed/", "pages": 2, "enabled": False},
 
     {"id": "grantlar.uz", "type": "rss", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
      "url": "https://grantlar.uz/feed/", "pages": 2},
 
-    # 2026-08-06 da topilgan va tekshirilgan: 10 ta yozuv, o'sha kungi.
     {"id": "scholarshipunion", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://scholarshipunion.com/feed/", "pages": 2},
+     "url": "https://scholarshipunion.com/feed/", "pages": 1, "enabled": False},
 
-    # Oddiy `requests` ga HTTP 429 berardi. http_client.py (Chrome TLS izi)
-    # bilan 200 va 254 KB feed qaytardi — shu sabab qaytarildi.
-    # DIQQAT: bu sayt tez-tez cheklaydi. 2026-08-06 da ko'p sinovdan keyin
-    # 429 dan 403 ga o'tdi. Kuniga bir marta murojaatda tiklanishi kutiladi;
-    # bir necha kun 403 tursa — DISABLED ga ko'chiring. Bitta sahifa yetarli.
     {"id": "opps4youth", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
-     "url": "https://opportunitiesforyouth.org/feed/"},
+     "url": "https://opportunitiesforyouth.org/feed/", "enabled": False},
 
     # ── RASMIY (qazish shart emas) ──────────────────────────────────────
     # O'zbekiston uchun Fulbright, UGRAD, professional almashuv dasturlari.
-    # 2026-08-06: 10 ta yozuv, 1 kunlik. Eng aniq manbalardan biri.
     {"id": "usembassy-uz", "type": "rss", "kind": "official", "region": "UZ", "topic": "scholarship",
      "url": "https://uz.usembassy.gov/feed/"},
 
@@ -114,38 +108,53 @@ SOURCES = [
      "url": "https://youth.europa.eu/rss.xml"},
 
     # ══════════════════════════════════════════════════════════════════════
-    # TELEGRAM — O'zbekiston
+    # TELEGRAM — O'zbekiston (Rasmiy va Ishonchli Manbalar)
     # ══════════════════════════════════════════════════════════════════════
-    {"id": "tg:edugrandsuz", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
-     "channel": "edugrandsuz"},
+    # "El-yurt umidi" jamg'armasi rasmiy kanali
+    {"id": "tg:eyuf", "type": "telegram", "kind": "official", "region": "UZ", "topic": "scholarship",
+     "channel": "eyuf_uz"},
 
+    # Yoshlar ishlari agentligi rasmiy kanali
+    {"id": "tg:yoshlar", "type": "telegram", "kind": "official", "region": "UZ", "topic": "grant",
+     "channel": "yoshlaragentligi"},
+
+    # Oliy ta'lim, fan va innovatsiyalar vazirligi
+    {"id": "tg:edu_uz", "type": "telegram", "kind": "official", "region": "UZ", "topic": "grant",
+     "channel": "eduuz"},
+
+    # Innovatsion rivojlanish agentligi
+    {"id": "tg:mininnovation", "type": "telegram", "kind": "official", "region": "UZ", "topic": "grant",
+     "channel": "mininnovation"},
+
+    # IT Park Uzbekistan tanlovlari va startap grantlari
+    {"id": "tg:itpark", "type": "telegram", "kind": "official", "region": "UZ", "topic": "startup",
+     "channel": "itpark_uz"},
+
+    # Erasmus+ O'zbekiston milliy ofisi
+    {"id": "tg:erasmus_uz", "type": "telegram", "kind": "official", "region": "UZ", "topic": "scholarship",
+     "channel": "erasmus_uz"},
+
+    # O'zbekiston ta'lim va grant kanallari (ichidan asl havola qazib olinadi)
     {"id": "tg:grantlar", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
      "channel": "grantlar"},
 
-    {"id": "tg:erasmus_uz", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
-     "channel": "erasmus_uz"},
+    {"id": "tg:edugrandsuz", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
+     "channel": "edugrandsuz"},
+
+    {"id": "tg:oliygoh", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
+     "channel": "oliygoh_grantlar"},
+
+    {"id": "tg:grantgo", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
+     "channel": "grantgouz"},
 
     {"id": "tg:grantsuzb", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
      "channel": "grantsuzb"},
 
-    {"id": "tg:yoshlar", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "grant",
-     "channel": "yoshlaragentligi"},
-
-    {"id": "tg:itpark", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "startup",
-     "channel": "itpark_uz"},
+    {"id": "tg:joinyouth", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "grant",
+     "channel": "joinyouthuz"},
 
     {"id": "tg:startupbaseuz", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "startup",
      "channel": "startupbaseuz"},
-
-    # 2026-08-06 da qo'shildi. Har uchalasi o'sha kuni faol edi.
-    {"id": "tg:grantgo", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
-     "channel": "grantgouz"},          # 20/20 postda tashqi havola
-
-    {"id": "tg:oliygoh", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "scholarship",
-     "channel": "oliygoh_grantlar"},   # 19/20 postda tashqi havola
-
-    {"id": "tg:joinyouth", "type": "telegram", "kind": "aggregator", "region": "UZ", "topic": "grant",
-     "channel": "joinyouthuz"},        # 17/20 postda tashqi havola
 
     # ══════════════════════════════════════════════════════════════════════
     # TELEGRAM — Global
@@ -157,7 +166,7 @@ SOURCES = [
      "channel": "scholarshipregion"},
 
     {"id": "tg:scholarshipscorner", "type": "telegram", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "channel": "scholarshipscorner"},  # 20/20 postda tashqi havola
+     "channel": "scholarshipscorner"},
 ]
 
 

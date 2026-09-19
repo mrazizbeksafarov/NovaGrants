@@ -1,12 +1,15 @@
 -- Nova Grants — bazani yangilash.
 -- Supabase → SQL Editor → shu faylni to'liq nusxalab "Run" bosing. Bir marta yetarli.
 
--- 1) Yangi ustunlar (takrorga qarshi uch qatlam)
-alter table public.posted_grants add column if not exists url_key     text;
-alter table public.posted_grants add column if not exists source_url  text;
-alter table public.posted_grants add column if not exists source_key  text;
-alter table public.posted_grants add column if not exists fingerprint text;
-alter table public.posted_grants add column if not exists status      text default 'posted';
+-- 1) Yangi ustunlar (takrorga qarshi to'rt qatlam)
+alter table public.posted_grants add column if not exists url_key       text;
+alter table public.posted_grants add column if not exists source_url    text;
+alter table public.posted_grants add column if not exists source_key    text;
+alter table public.posted_grants add column if not exists fingerprint   text;
+alter table public.posted_grants add column if not exists semantic_slug text;
+alter table public.posted_grants add column if not exists status        text default 'posted';
+
+create index if not exists idx_pg_semantic_slug on public.posted_grants (semantic_slug);
 
 -- 2) Eski yozuvlarga status beramiz
 update public.posted_grants set status = 'posted' where status is null;

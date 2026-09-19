@@ -132,16 +132,36 @@ def get_seen_fingerprints(fingerprints: list) -> set:
     return _collect("fingerprint", fingerprints)
 
 
+def make_semantic_slug(title: str, host: str, deadline: str = None) -> str:
+    """Yagona semantik hesh/slug yaratadi: masalan 'turkiye-burslari-2027-turkiyeburslari-gov-tr'."""
+    import re
+    clean_t = re.sub(r"[^a-z0-9]+", "-", (title or "").lower()).strip("-")
+    clean_h = re.sub(r"[^a-z0-9]+", "-", (host or "").lower()).strip("-")
+    year = ""
+    if deadline:
+        m = re.search(r"202[5-9]", str(deadline))
+        if m:
+            year = m.group(0)
+    else:
+        m = re.search(r"202[5-9]", clean_t)
+        if m:
+            year = m.group(0)
+    parts = [clean_t[:45], year, clean_h]
+    return "-".join(p for p in parts if p).strip("-")
+
+
+def get_seen_semantic_slugs(slugs: list) -> set:
+    """Allaqachon post qilingan semantik sluglar."""
+    return _collect("semantic_slug", slugs)
+
+
 def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted",
                key: str = None):
     """Yozuvni bazaga qo'shadi yoki yangilaydi.
 
-    key — qator qaysi kalit bo'yicha saqlanishi. Berilmasa grantning asl
-          havolasi (`url_key`) ishlatiladi. `deduplicate()` bu yerga MANBA
-          MAQOLASI kalitini beradi, shunda grantning o'z qatoriga tegilmaydi.
-
     Kafolatlar:
       • "posted" qator hech qachon "skipped"/"duplicate" ga pasaymaydi
+      • Agregator havolasi hech qachon "posted" deb saqlanmaydi (faqat asl havola)
       • mavjud `deadline` bo'sh qiymat bilan o'chirilmaydi
       • `reminder_sent` faqat YANGI qator qo'shilganda False qilinadi
     """
@@ -151,22 +171,27 @@ def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted",
     if deadline_iso and (deadline_iso == "null" or len(str(deadline_iso)) < 10):
         deadline_iso = None
 
-    # Asl havola topilmagan yozuvlarda url_key bo'sh bo'ladi. Bunday holatda
-    # manba maqolasining kalitini ishlatamiz — shunda yozuv baribir yagona
-    # bo'ladi va ertaga o'sha maqola qayta ochilmaydi.
     url_key = key or grant.get("url_key") or grant.get("source_key") or ""
     if not url_key:
         return
 
+    target_url = grant.get("url") or grant.get("source_url", "")
+    from link_resolver import is_aggregator
+    if status == "posted" and is_aggregator(target_url):
+        print(f"  🛑 XAVFSIZLIK: Agregator havolasi post sifatida saqlanmadi: {target_url[:60]}")
+        return
+
     row = {
         "title": (grant.get("title") or "")[:255],
-        "url": grant.get("url") or grant.get("source_url", ""),
+        "url": target_url,
         "url_key": url_key,
         "source_url": grant.get("source_url", ""),
         "source_key": grant.get("source_key", ""),
         "fingerprint": grant.get("fingerprint", ""),
         "status": status,
     }
+    if grant.get("semantic_slug"):
+        row["semantic_slug"] = grant.get("semantic_slug")
     if deadline_iso:
         row["deadline"] = deadline_iso
 

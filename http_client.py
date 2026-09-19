@@ -41,19 +41,27 @@ bot ishlashdan to'xtamaydi, faqat ba'zi manbalar yopiq qoladi.
 
 import requests as _requests
 
-# Chrome ning taqlid qilinadigan versiyasi. curl_cffi yangilanganda bu nom
-# eskirishi mumkin — shuning uchun quyida xatoni ushlab, taqlidsiz davom etamiz.
+# Chrome ning taqlid qilinadigan versiyalari
+IMPERSONATE_PROFILES = ["chrome124", "chrome120", "safari17_0", "edge101"]
 IMPERSONATE = "chrome124"
 
-TIMEOUT = 20
+TIMEOUT = 25
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,uz;q=0.8",
+    "Sec-Ch-Ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1"
 }
 
 try:
@@ -86,41 +94,38 @@ class Client:
     def _curl_get(self, url, **kw):
         if self._curl_session is None:
             return None
-        try:
-            return self._curl_session.get(url, impersonate=self._impersonate, **kw)
-        except TypeError:
-            # curl_cffi versiyasi bu taqlid nomini bilmaydi — taqlidsiz urinamiz
-            self._impersonate = None
+        for prof in IMPERSONATE_PROFILES:
             try:
-                return self._curl_session.get(url, **kw)
+                resp = self._curl_session.get(url, impersonate=prof, **kw)
+                if resp is not None and resp.status_code != 403:
+                    return resp
+                if resp is not None and resp.status_code == 403:
+                    # Boshqa profil bilan sinab ko'ramiz
+                    continue
+                return resp
+            except TypeError:
+                continue
             except Exception:
-                return None
+                continue
+        # Barcha profillar o'tmadi — taqlidsiz urinamiz
+        try:
+            return self._curl_session.get(url, **kw)
         except Exception:
             return None
 
     # ── ommaviy ──────────────────────────────────────────────────────────
     def get(self, url: str, timeout: int = TIMEOUT, allow_redirects: bool = True, **kw):
-        """Avval brauzer izi bilan, bo'lmasa oddiy mijoz bilan.
-
-        Qaytaradi: javob obyekti yoki None. Ikkala mijozning javobida ham
-        `.status_code`, `.text`, `.content`, `.url`, `.headers` bor.
-        """
+        """Avval brauzer izi bilan, bo'lmasa oddiy mijoz bilan."""
         resp = self._curl_get(url, timeout=timeout, allow_redirects=allow_redirects, **kw)
-        if resp is not None:
-            # Javob keldi — status qanday bo'lishidan qat'i nazar shuni qaytaramiz.
-            # ATAYIN ikkinchi so'rov yubormaymiz: 429 "sekinlashtir" degani,
-            # boshqa mijoz bilan darrov qayta urinish saytni yanada bezovta
-            # qiladi va bloklanishni uzaytiradi. Kutish chaqiruvchining ishi.
+        if resp is not None and resp.status_code not in (403, 503):
             return resp
 
-        # Bu yerga faqat TRANSPORT darajasida uzilganda tushamiz (curl_cffi
-        # yo'q, yoki ulanish/timeout xatosi). Oddiy mijoz bilan sinab ko'ramiz:
-        # ba'zi eski saytlar curl_cffi ning HTTP/2 sozlamalarini yoqtirmaydi.
         try:
-            return self._plain.get(url, timeout=timeout,
-                                   allow_redirects=allow_redirects, **kw)
+            plain_resp = self._plain.get(url, timeout=timeout,
+                                         allow_redirects=allow_redirects, **kw)
+            return plain_resp if plain_resp is not None else resp
         except Exception:
-            return None
+            return resp
 
     def post(self, url: str, timeout: int = TIMEOUT, **kw):
         try:

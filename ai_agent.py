@@ -29,7 +29,7 @@ from filters import validate_deadline_iso
 
 load_dotenv()
 
-MODEL_CHAIN = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+MODEL_CHAIN = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]
 MAX_ATTEMPTS = 4
 BATCH_SIZE = 8               # bitta so'rovga nechta imkoniyat
 
@@ -69,13 +69,20 @@ SYSTEM_INSTRUCTION = """
 Sen 'Nova Grants' Telegram kanalining muharririsan. O'zingni AI yoki bot deb tanishtirma.
 
 KIM UCHUN
-Auditoriya — O'zbekistondagi talabalar, yosh mutaxassislar va tadbirkorlar.
+Auditoriya — O'zbekistondagi talabalar, yosh mutaxassislar, olimlar va tadbirkorlar.
 Ular JISMONIY SHAXS sifatida ariza topshiradi.
+
+QAMROV (O'ZBEKISTON FUQAROLARI UCHUN)
+1. Mahalliy O'zbekiston imkoniyatlari: "El-yurt umidi", Yoshlar ishlari agentligi,
+   IT Park tanlovlari, vazirlik va davlat stipendiyalari, startap akseleratorlar.
+2. Xalqaro nufuzli dasturlar: O'zbekiston fuqarolari qatnasha oladigan barcha xalqaro
+   hukumat grantlari (Turkiye Burslari, Stipendium Hungaricum, Chevening, Fulbright,
+   DAAD, Erasmus Mundus, MEXT, GKS, CSC va h.k.), xalqaro amaliyotlar, yozgi maktablar.
 
 USLUB
 Zamonaviy, jiddiy, aniq. Emoji ishlatma. Suv gap va ortiqcha maqtov yo'q.
 O'zbek tilida yoz. Imkoniyat nomini tarjima qilma — original nomda qoldir
-(masalan "Chevening Scholarships 2027", "Erasmus Mundus").
+(masalan "Chevening Scholarships 2027", "Stipendium Hungaricum", "Erasmus Mundus").
 
 HAVOLA
 Havola yozma. Har bir imkoniyatga faqat uning RAQAMI (index) bilan murojaat qil.
@@ -85,8 +92,9 @@ QAT'IY TASHLA
 1. Tashkilot/universitet topshiradigan institutsional grantlar.
    Belgilari: "principal investigator", "host institution", "eligible organizations",
    "consortium". Bunga bir kishi ariza topshira olmaydi.
-2. O'zbekiston fuqarosi qatnasha olmaydiganlar: "for Nigerians only",
-   "open to EU citizens only", "must be a US permanent resident".
+2. O'zbekiston fuqarosi qatnasha OLMAYDIGAN cheklovli grantlar:
+   "for African citizens only", "for Nigerian students", "open to EU citizens only",
+   "must be a US permanent resident", "ASEAN nationals only".
 3. Muddati o'tib ketganlar.
 4. Yangilik, hisobot, "natijalar e'lon qilindi", "g'oliblar aniqlandi",
    "vebinar bo'lib o'tdi" tipidagilar.
@@ -95,43 +103,82 @@ QAT'IY TASHLA
 QOLDIR
 Stipendiya, fellowship, amaliyot, almashuv dasturi, yozgi maktab, xalqaro
 tanlov va musobaqa, akselerator, yosh tadbirkorlar uchun moliyalashtirish —
-bir kishi o'zi ariza topshira oladigan har qanday imkoniyat.
+O'zbekistonlik bir kishi o'zi ariza topshira oladigan har qanday imkoniyat.
 
 SIFAT MUHIMROQ
 Yarim-yorti mos kelganini "shunchaki bo'lsin" deb qo'shma.
 Bitta ham mos imkoniyat bo'lmasa, cards ni bo'sh ro'yxat qilib qaytar.
 
-benefits — aniq faktlar bo'lsin ("oyiga $2,000 stipendiya", "aviabilet qoplanadi"),
-umumiy gap emas ("ajoyib imkoniyat").
+benefits — aniq faktlar bo'lsin ("oyiga $2,000 stipendiya", "aviabilet qoplanadi",
+"kontrakt 100% to'lanadi"), umumiy gap emas ("ajoyib imkoniyat").
 """
 
 
 def _config_for(model: str) -> types.GenerateContentConfig:
-    """Har bir model o'z sozlamasini talab qiladi.
-
-    "O'ylash" (thinking) sozlamasi modellar orasida farq qiladi:
-      • Gemini 3.x — thinking_level="low"  (o'lchandi: 1624 → 471 token)
-      • Gemini 2.5 — thinking_budget=0     (thinking_level ni qabul qilmaydi)
-    """
+    """Har bir model o'z sozlamasini talab qiladi."""
     kwargs = dict(
         system_instruction=SYSTEM_INSTRUCTION,
         response_mime_type="application/json",
         response_schema=PostContent,
-        # 0.9 juda yuqori edi: sarlavha xilma-xilligi uchun to'lanadigan narx —
-        # muddat, stipendiya summasi va talablardagi xatolar. 0.35 da faktlar
-        # barqaror, sarlavha esa baribir har safar boshqacha chiqadi (kirish
-        # ma'lumoti har kuni yangi).
         temperature=0.35,
     )
 
     if model in _NO_THINKING_CONFIG:
         pass
-    elif model.startswith("gemini-3") or model == "gemini-flash-latest":
-        kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
-    elif "2.5" in model:
-        kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    elif model.startswith("gemini-3") or "flash" in model:
+        try:
+            kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+        except Exception:
+            pass
 
     return types.GenerateContentConfig(**kwargs)
+
+
+def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Optional[str]:
+    """Gemini flagman modeli orqali maqola ichidagi yagona rasmiy asl havolani aniqlaydi.
+
+    Agregator, ijtimoiy tarmoq yoki reklama havolalarini qat'iyan rad etadi.
+    Faqat original tashkilot yoki dasturning haqiqiy veb-saytini tanlaydi.
+    """
+    if not client or not candidates:
+        return None
+
+    valid_candidates = []
+    for c in candidates:
+        u = str(c or "").strip()
+        if u.startswith(("http://", "https://")) and u not in valid_candidates:
+            valid_candidates.append(u)
+
+    if not valid_candidates:
+        return None
+
+    prompt = (
+        f"Imkoniyat sarlavhasi: {title}\n"
+        f"Matn qismi:\n{(text or '')[:1000]}\n\n"
+        f"Nomzod havolalar ro'yxati:\n" + "\n".join(f"- {c}" for c in valid_candidates[:12]) + "\n\n"
+        "Vazifa: Ushbu grant/stipendiya/tanlovning RASMIY TASHKILOT yoki UNIVERSITET veb-saytiga "
+        "tegishli asl ariza yoki rasmiy e'lon sahifasi havolasini tanla. "
+        "Hech qanday agregator (opportunitydesk, scholarshiproar, grantlar, edugrants va h.k.), "
+        "telegram kanallar yoki ijtimoiy tarmoqlarni tanlama.\n"
+        "Javobni FAQAT bitta to'liq URL qilib qaytar. Agar nomzodlar orasida rasmiy sayt bo'lmasa, "
+        "NONE deb yoz."
+    )
+
+    for model in MODEL_CHAIN[:2]:
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.0)
+            )
+            ans = (resp.text or "").strip()
+            if ans and ans != "NONE" and ans.startswith("http"):
+                clean_ans = ans.split()[0].rstrip(".,;)\"'>")
+                return clean_ans
+        except Exception as e:
+            continue
+
+    return None
 
 
 def _build_prompt(grants: list) -> str:
