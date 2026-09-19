@@ -444,6 +444,15 @@ _TOPIC_WORDS = ("phd", "postdoc", "intern", "internship", "fellow", "fellowship"
 
 STRONG_ANCHOR_SCORE = 30    # "Apply now", "Official website", "Rasmiy veb-sayt" darajasi
 
+ENTITY_BRANDS = [
+    "cambridge", "oxford", "harvard", "stanford", "mit", "imperial", "kaust",
+    "columbia", "yale", "princeton", "berkeley", "cornell", "caltech", "chicago",
+    "edinburgh", "kcl", "ucl", "manchester", "toronto", "mcgill", "unicef",
+    "unesco", "undp", "who", "worldbank", "rotary", "fulbright", "chevening",
+    "daad", "mext", "erasmus", "turkiyeburslari", "stipendium", "gatescambridge",
+    "rhodes", "schwarzman", "knight-hennessy", "ellison"
+]
+
 
 def link_matches_title(title: str, url: str, anchor_score: int = 0) -> tuple:
     """Havola sarlavhaga mos keladimi? Qaytaradi: (mos_keladi, sabab).
@@ -453,6 +462,8 @@ def link_matches_title(title: str, url: str, anchor_score: int = 0) -> tuple:
         ("Amaliyot Ofisi" -> yoshlar.gov.uz/)
       • butunlay boshqa saytga havola — maqoladagi begona havola tanlangan bo'lsa
         ("CoCreate Pitch" -> accio.com/work/installGuide)
+      • brend/universitet nomuvofiqligi — aggregatordagi qo'shimcha reklama/vidjet
+        ("Imperial College London" -> gatescambridge.org)
 
     MUHIM: sarlavha o'zbekcha yoki ruscha bo'lsa, inglizcha URL bilan so'z mosligi
     bo'lmaydi (masalan "Incubation Program" -> awards.gov.uz/en/pta). Shuning uchun
@@ -465,9 +476,17 @@ def link_matches_title(title: str, url: str, anchor_score: int = 0) -> tuple:
     path = (urlparse(url).path or "").strip("/")
     host = host_of(url)
     blob = f"{host}/{path}".lower()
+    low_title = (title or "").lower()
 
-    tokens = {t for t in re.findall(r"[a-z0-9]{4,}", (title or "").lower())
+    tokens = {t for t in re.findall(r"[a-z0-9]{4,}", low_title)
               if t not in _TITLE_NOISE}
+
+    # Brend/tashkilot nomuvofiqligi tekshiruvi (begona universitet havolasini rad etadi)
+    for b in ENTITY_BRANDS:
+        if b in blob and b not in low_title:
+            other_brands = [ob for ob in ENTITY_BRANDS if ob in low_title]
+            if other_brands or len(tokens) >= 2:
+                return False, f"brend nomuvofiqligi: URL da '{b}', lekin sarlavhada yo'q"
 
     token_hit = any(t in blob for t in tokens)
     strong = anchor_score >= STRONG_ANCHOR_SCORE

@@ -29,19 +29,30 @@ from filters import validate_deadline_iso
 
 load_dotenv()
 
-MODEL_CHAIN = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]
+MODEL_CHAIN = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]
 MAX_ATTEMPTS = 4
 BATCH_SIZE = 8               # bitta so'rovga nechta imkoniyat
 
 # "thinking" sozlamasini qabul qilmagan modellar
 _NO_THINKING_CONFIG = set()
 
-_api_key = os.getenv("GEMINI_API_KEY")
-if _api_key and _api_key != "your_google_gemini_api_key_here":
-    client = genai.Client(api_key=_api_key)
-else:
-    client = None
-    print("DIQQAT: GEMINI_API_KEY topilmadi — zaxira formatlagich ishlatiladi.")
+# Bir nechta Gemini API kalitlari ro'yxati (kalitlar rotatsiyasi va 429/503 da uzluksiz o'tish)
+_raw_keys = os.getenv("GEMINI_API_KEYS", "") or os.getenv("GEMINI_API_KEY", "")
+API_KEYS = [k.strip() for k in re.split(r"[,;\s]+", _raw_keys) if k.strip() and "your_google" not in k]
+for i in range(1, 10):
+    k = os.getenv(f"GEMINI_API_KEY_{i}")
+    if k and k.strip() and k.strip() not in API_KEYS:
+        API_KEYS.append(k.strip())
+
+
+def get_client(index: int = 0) -> Optional[genai.Client]:
+    if not API_KEYS:
+        return None
+    key = API_KEYS[index % len(API_KEYS)]
+    return genai.Client(api_key=key)
+
+
+client = get_client(0)
 
 
 class GrantCard(BaseModel):
@@ -115,19 +126,28 @@ benefits — aniq faktlar bo'lsin ("oyiga $2,000 stipendiya", "aviabilet qoplana
 
 
 def _config_for(model: str) -> types.GenerateContentConfig:
-    """Har bir model o'z sozlamasini talab qiladi."""
+    """Har bir model o'z sozlamasini talab qiladi.
+
+    Gemini 3.8 va 3.7 flagmanlarida thinking_level='high' chuqur fikrlash va
+    O'zbekiston fuqarolariga moslikni benuqson tahlil qilishni ta'minlaydi.
+    """
     kwargs = dict(
         system_instruction=SYSTEM_INSTRUCTION,
         response_mime_type="application/json",
         response_schema=PostContent,
-        temperature=0.35,
+        temperature=0.2,
     )
 
     if model in _NO_THINKING_CONFIG:
         pass
-    elif model.startswith("gemini-3") or "flash" in model:
+    elif "3.8" in model or "3.7" in model:
         try:
-            kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+            kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="high")
+        except Exception:
+            pass
+    elif "3.6" in model or "3.5" in model or "flash" in model:
+        try:
+            kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="medium")
         except Exception:
             pass
 
@@ -135,12 +155,12 @@ def _config_for(model: str) -> types.GenerateContentConfig:
 
 
 def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Optional[str]:
-    """Gemini flagman modeli orqali maqola ichidagi yagona rasmiy asl havolani aniqlaydi.
+    """Gemini 3.8 Flash (thinking_level='high') orqali maqola ichidagi asl rasmiy havolani aniqlaydi.
 
     Agregator, ijtimoiy tarmoq yoki reklama havolalarini qat'iyan rad etadi.
     Faqat original tashkilot yoki dasturning haqiqiy veb-saytini tanlaydi.
     """
-    if not client or not candidates:
+    if not API_KEYS or not candidates:
         return None
 
     valid_candidates = []
@@ -155,28 +175,40 @@ def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Opt
     prompt = (
         f"Imkoniyat sarlavhasi: {title}\n"
         f"Matn qismi:\n{(text or '')[:1000]}\n\n"
-        f"Nomzod havolalar ro'yxati:\n" + "\n".join(f"- {c}" for c in valid_candidates[:12]) + "\n\n"
+        f"Nomzod havolalar ro'yxati:\n" + "\n".join(f"- {c}" for c in valid_candidates[:14]) + "\n\n"
         "Vazifa: Ushbu grant/stipendiya/tanlovning RASMIY TASHKILOT yoki UNIVERSITET veb-saytiga "
         "tegishli asl ariza yoki rasmiy e'lon sahifasi havolasini tanla. "
         "Hech qanday agregator (opportunitydesk, scholarshiproar, grantlar, edugrants va h.k.), "
         "telegram kanallar yoki ijtimoiy tarmoqlarni tanlama.\n"
-        "Javobni FAQAT bitta to'liq URL qilib qaytar. Agar nomzodlar orasida rasmiy sayt bo'lmasa, "
-        "NONE deb yoz."
+        "QAT'IY QOIDA: Tanlangan havola sarlavhadagi tashkilot/universitetga tegishli bo'lishi shart! "
+        "Begona tashkilot/dastur havolasini (masalan, Imperial College postiga Gates Cambridge havolasini) "
+        "aslo tanlama. Agar nomzodlar orasida aynan shu grantning rasmiy arizasi bo'lmasa, NONE deb yoz.\n"
+        "Javobni FAQAT bitta to'liq URL yoki NONE qilib qaytar."
     )
 
-    for model in MODEL_CHAIN[:2]:
-        try:
-            resp = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.0)
-            )
-            ans = (resp.text or "").strip()
-            if ans and ans != "NONE" and ans.startswith("http"):
-                clean_ans = ans.split()[0].rstrip(".,;)\"'>")
-                return clean_ans
-        except Exception as e:
+    for i in range(len(API_KEYS)):
+        cli = get_client(i)
+        if not cli:
             continue
+        for model in MODEL_CHAIN[:2]:
+            try:
+                cfg_kwargs = {"temperature": 0.0}
+                if "3.8" in model or "3.7" in model:
+                    try:
+                        cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="high")
+                    except Exception:
+                        pass
+                resp = cli.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(**cfg_kwargs)
+                )
+                ans = (resp.text or "").strip()
+                if ans and ans != "NONE" and ans.startswith("http"):
+                    clean_ans = ans.split()[0].rstrip(".,;)\"'>")
+                    return clean_ans
+            except Exception:
+                continue
 
     return None
 
@@ -219,17 +251,20 @@ def generate_post_content(grants: list) -> dict:
     if not grants:
         return None
 
-    if not client:
+    if not API_KEYS:
         return _attach_urls(_fallback_content(grants), grants)
 
     prompt = _build_prompt(grants)
     chain = list(MODEL_CHAIN)
     last_error = None
+    num_keys = max(1, len(API_KEYS))
+    total_attempts = MAX_ATTEMPTS * num_keys
 
-    for attempt in range(MAX_ATTEMPTS):
-        model = chain[min(attempt, len(chain) - 1)]
+    for attempt in range(total_attempts):
+        cli = get_client(attempt % num_keys)
+        model = chain[(attempt // num_keys) % len(chain)]
         try:
-            resp = client.models.generate_content(
+            resp = cli.models.generate_content(
                 model=model, contents=prompt, config=_config_for(model))
         except Exception as e:
             last_error = e
@@ -238,17 +273,16 @@ def generate_post_content(grants: list) -> dict:
             if "hinking" in msg and "not supported" in msg and model not in _NO_THINKING_CONFIG:
                 _NO_THINKING_CONFIG.add(model)
                 print(f"  {model} 'thinking' sozlamasini qo'llamaydi — sozlamasiz qayta urinamiz.")
-                chain.insert(attempt + 1, model)
                 continue
 
             if any(c in msg for c in ("503", "429", "500", "UNAVAILABLE", "RESOURCE_EXHAUSTED")):
-                wait = 5 * (attempt + 1)
-                print(f"  {model} band. {wait}s kutib, keyingi modelga o'tamiz...")
+                wait = 2 * ((attempt % num_keys) + 1)
+                print(f"  {model} (kalit #{attempt % num_keys + 1}) band. Keyingi kalit/modelga o'tamiz...")
                 time.sleep(wait)
                 continue
 
             print(f"  AI xatoligi ({model}): {type(e).__name__}: {msg[:120]}")
-            break
+            continue
 
         raw = re.sub(r"^```(?:json)?|```$", "", (resp.text or "").strip()).strip()
         if not raw:

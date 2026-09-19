@@ -169,6 +169,17 @@ def test_kuchli_anchor_soz_mosligini_bekor_qiladi():
     assert ok2 is False
 
 
+def test_begona_universitet_yoki_brend_havolasi_rad_etiladi():
+    """Imperial College grantiga Gates Cambridge havolasi tushishi kabi xatoni to'xtatish."""
+    ok, reason = link_matches_title(
+        "President’s PhD Scholarships at Imperial College London 2027",
+        "https://www.gatescambridge.org/apply/how-to-apply/",
+        anchor_score=STRONG_ANCHOR_SCORE,
+    )
+    assert ok is False
+    assert "brend nomuvofiqligi" in reason
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # post_builder.py — post qurish
 # ══════════════════════════════════════════════════════════════════════════
