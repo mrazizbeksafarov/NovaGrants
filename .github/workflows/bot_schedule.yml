@@ -61,10 +61,20 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           PYTHONIOENCODING: utf-8
-        run: python main.py
+        run: python main.py 2>&1 | tee bot_run.log
+
+      - name: Log faylini saqlash (Artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-run-log-${{ github.run_number }}
+          path: bot_run.log
+          retention-days: 30
+

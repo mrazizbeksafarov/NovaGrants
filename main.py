@@ -410,11 +410,21 @@ def run():
     log(f"Yakunlandi: {posted} ta yangi imkoniyat kanalga chiqdi ({elapsed}s)")
     log("=" * 66)
 
-    if problems and not DRY_RUN:
-        notify_admin("<b>Nova Grants — diqqat talab qiladi</b>\n\n"
-                     + "\n".join(f"• {p}" for p in problems)
-                     + f"\n\nYurish: {started.strftime('%Y-%m-%d %H:%M')} UTC, "
-                       f"{posted} ta post, {elapsed}s")
+    if not DRY_RUN:
+        title = "⚠️ <b>Nova Grants — diqqat talab qiladi</b>" if problems else "✅ <b>Nova Grants — Kunlik hisobot</b>"
+        lines = [title, ""]
+        if problems:
+            lines.append("<b>Aniqlangan muammolar:</b>")
+            lines.extend(f"• {p}" for p in problems)
+            lines.append("")
+        lines.append(f"📊 <b>Kanalga chiqdi:</b> {posted} ta yangi grant")
+        lines.append(f"⏱ <b>Vaqt:</b> {elapsed} soniya")
+        db_stat = stats()
+        if db_stat:
+            lines.append(f"🗄 <b>Bazada saqlangan:</b> {db_stat.get('posted', 0)} ta grant")
+        lines.append(f"📅 <b>Yurish vaqti:</b> {started.strftime('%Y-%m-%d %H:%M')} UTC")
+        notify_admin("\n".join(lines))
+
 
 
 if __name__ == "__main__":
