@@ -335,9 +335,9 @@ def test_rich_split_uses_nested_counts_and_card_boundaries():
 def test_multi_grant_digest_has_compact_clickable_navigation():
     cards = [card(name=f"Fellowship {i}", url=f"https://example.org/apply/{i}") for i in range(3)]
     blocks, _ = build_post("New", cards)
-    navigation = next(b for b in blocks if b["type"] == "details" and "ro'yxati" in b["summary"])
-    assert "is_open" not in navigation
-    table = navigation["blocks"][0]
+    assert not any(b["type"] == "details" and "ro'yxati" in b["summary"] for b in blocks)
+    table = next(b for b in blocks if b["type"] == "table")
+    assert table["caption"].startswith("Dasturlar ro'yxati")
     assert table["is_compact"] is True and len(table["cells"]) == 4
     targets = {row[0]["text"]["anchor_name"] for row in table["cells"][1:]}
     anchors = {b["name"] for b in blocks if b["type"] == "anchor"}

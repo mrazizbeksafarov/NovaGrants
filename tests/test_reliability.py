@@ -363,3 +363,45 @@ def test_duplicate_batch_keys_do_not_break_insertion(monkeypatch):
     db = use_database(monkeypatch)
     database.save_grants_batch([{"grant": grant()}, {"grant": grant()}])
     assert len(db.rows) == 1
+
+
+def test_cards_from_several_batches_share_one_digest(monkeypatch):
+    grants = [grant(i) for i in range(10)]
+    def pick_first(batch):
+        g = batch[0]
+        return {"headline": "New", "cards": [{"name": g["title"], "url": g["url"], "_source": g}]}
+    monkeypatch.setattr(main, "generate_post_content", pick_first)
+    posts, saved = [], []
+    monkeypatch.setattr(main, "publish_post", lambda blocks, html: posts.append(blocks) or True)
+    monkeypatch.setattr(main, "save_grants_batch", saved.extend)
+    assert main.publish(grants) == 2
+    assert len(posts) == 1
+    assert sorted(row["status"] for row in saved).count("posted") == 2
+    assert sorted(row["status"] for row in saved).count("skipped") == 8
+
+
+def test_later_ai_failure_still_publishes_earlier_choices_then_reports(monkeypatch):
+    grants = [grant(i) for i in range(10)]
+    replies = [{"headline": "New", "cards": [{"name": grants[0]["title"], "url": grants[0]["url"], "_source": grants[0]}]}, None]
+    monkeypatch.setattr(main, "generate_post_content", lambda batch: replies.pop(0))
+    posts, saved = [], []
+    monkeypatch.setattr(main, "publish_post", lambda blocks, html: posts.append(blocks) or True)
+    monkeypatch.setattr(main, "save_grants_batch", saved.extend)
+    with pytest.raises(RuntimeError, match="AI"):
+        main.publish(grants)
+    assert len(posts) == 1
+    assert [row["status"] for row in saved].count("posted") == 1
+    assert all(row["grant"]["url"] not in {g["url"] for g in grants[8:]} for row in saved)
+
+
+def test_unverified_grants_are_not_recorded_as_rejected(monkeypatch):
+    grants = [grant(i) for i in range(3)]
+    content = {"headline": "New", "cards": [{"name": grants[0]["title"], "url": grants[0]["url"], "_source": grants[0]}],
+               "unverified_urls": [grants[1]["url"]]}
+    monkeypatch.setattr(main, "generate_post_content", lambda batch: content)
+    monkeypatch.setattr(main, "publish_post", lambda *args: True)
+    saved = []
+    monkeypatch.setattr(main, "save_grants_batch", saved.extend)
+    assert main.publish(grants) == 1
+    status = {row["grant"]["url"]: row["status"] for row in saved}
+    assert status == {grants[0]["url"]: "posted", grants[2]["url"]: "skipped"}
