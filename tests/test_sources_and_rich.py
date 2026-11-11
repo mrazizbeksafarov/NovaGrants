@@ -396,3 +396,46 @@ def test_ai_headline_cannot_label_partial_awards_fully_funded(monkeypatch):
     headline = next(b for b in captured[0][0] if b["type"] == "heading" and b["size"] == 2)
     assert headline["text"] == "1 ta yangi xalqaro imkoniyat"
     assert "Barchasi to'liq" not in captured[0][1]
+
+
+def test_share_button_links_the_channel_post_itself():
+    from urllib.parse import parse_qs, urlparse
+    url = telegram_bot.share_url({"message_id": 512, "chat": {"id": -100, "username": "Nova_Grants"}})
+    query = parse_qs(urlparse(url).query)
+    assert url.startswith("https://t.me/share/url?")
+    assert query["url"] == ["https://t.me/Nova_Grants/512"]
+    assert "Nova Grants" in query["text"][0]
+
+
+def test_share_button_is_added_to_last_part_after_delivery(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "BOT_TOKEN", "test")
+    monkeypatch.setattr(telegram_bot, "CHANNEL_ID", "@Nova_Grants")
+    monkeypatch.setattr(telegram_bot, "_rich_supported", True)
+    calls, next_id = [], [100]
+    def post(payload, method="sendMessage"):
+        calls.append((method, payload))
+        if method == "sendRichMessage":
+            telegram_bot._last_result = {"message_id": next_id[0], "chat": {"id": -100, "username": "Nova_Grants"}}
+            next_id[0] += 1
+        return True, ""
+    monkeypatch.setattr(telegram_bot, "_post", post)
+    blocks, html = build_post("New", [card()])
+    assert telegram_bot.publish(blocks, html)
+    method, payload = calls[-1]
+    assert method == "editMessageReplyMarkup" and payload["message_id"] == 100
+    button = payload["reply_markup"]["inline_keyboard"][0][0]
+    assert "Nova_Grants%2F100" in button["url"]
+
+
+def test_failed_share_button_does_not_fail_the_delivered_post(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "BOT_TOKEN", "test")
+    monkeypatch.setattr(telegram_bot, "CHANNEL_ID", "@Nova_Grants")
+    monkeypatch.setattr(telegram_bot, "_rich_supported", True)
+    def post(payload, method="sendMessage"):
+        if method == "editMessageReplyMarkup":
+            return False, "Bad Request"
+        telegram_bot._last_result = {"message_id": 7, "chat": {"id": -100, "username": "Nova_Grants"}}
+        return True, ""
+    monkeypatch.setattr(telegram_bot, "_post", post)
+    blocks, html = build_post("New", [card()])
+    assert telegram_bot.publish(blocks, html) is True
