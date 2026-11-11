@@ -1,0 +1,10 @@
+{
+  "model": "gemini-3.8-flash",
+  "thinking_level": "medium",
+  "request_timeout_seconds": 240,
+  "seconds": 2.59,
+  "ok": false,
+  "expected_indexes": [
+    1
+  ]
+}

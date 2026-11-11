@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-11-11T16:37:01.660423+00:00",
+  "dry_run": true,
+  "resolve_budget": 6,
+  "post_budget": 4,
+  "status": "success",
+  "error_type": null,
+  "seconds": 36.38,
+  "telegram_writes": false,
+  "database_writes": false,
+  "summary_lines": [
+    "── Saralash: 458 → 334 ta imkoniyatga o'xshash yozuv",
+    "── Yangi: 191 ta (143 tasi avval ko'rilgan)",
+    "── Asl havola topildi: 6/6 ta (8s)",
+    "── Takrorlar tashlandi: bazada bor 0 ta, shu yurishda takror 1 ta",
+    "── Post uchun qoldi: 5 ta",
+    "   gemini-2.5-flash | 3134 token",
+    "── Jami sarflangan token: 3134",
+    "Quruq sinov yakunlandi: 3 ta kartochka tayyorlandi, yuborilmadi (36s)"
+  ]
+}

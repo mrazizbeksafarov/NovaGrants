@@ -1,0 +1,23 @@
+{
+  "checked_at": "2026-11-11T17:44:44.036699+00:00",
+  "ok": true,
+  "model_chain": [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash"
+  ],
+  "seconds": 6.06,
+  "expected_indexes": [
+    1
+  ],
+  "selected_indexes": [
+    1
+  ],
+  "usage": {
+    "model": "gemini-3.6-flash",
+    "prompt": 1968,
+    "output": 297,
+    "total": 2591
+  },
+  "matches_expected": true
+}
