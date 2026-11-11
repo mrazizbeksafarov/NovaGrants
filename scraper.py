@@ -24,11 +24,12 @@ from bs4 import BeautifulSoup
 
 import http_client
 from sources import enabled_sources
-from link_resolver import clean_url, url_key, is_blocked, is_aggregator, host_of
+from link_resolver import clean_url, url_key, is_blocked, is_aggregator, host_of, _collect_candidates
+from opportunity_content import opportunity_summary
 
 TIMEOUT = 25
 MAX_PER_SOURCE = 60          # bitta manbadan ko'pi bilan shuncha yangi yozuv
-SUMMARY_LIMIT = 1500
+SUMMARY_LIMIT = 1800
 MAX_RETRY = 2                # 429 / vaqtinchalik xatolarda qayta urinish
 
 # ── YANGILIK CHEGARASI ────────────────────────────────────────────────────
@@ -103,7 +104,10 @@ def _fetch_feed(url, source_id):
         if resp.status_code in (429, 503) and attempt < MAX_RETRY:
             retry_after = resp.headers.get("Retry-After", "")
             delay = float(retry_after) if retry_after.isdigit() else 5.0 * (attempt + 1)
-            time.sleep(min(delay, 20))
+            if delay > 20:
+                print(f"  [{source_id}] Retry-After {delay:.0f}s — keyingi yurishga qoldi")
+                return None
+            time.sleep(delay)
             continue
 
         print(f"  [{source_id}] HTTP {resp.status_code}")
@@ -139,11 +143,18 @@ def scrape_rss(src):
             if len(out) >= MAX_PER_SOURCE:
                 break
             link = clean_url(entry.get("link", ""))
+            if (link.startswith("http://") and src["url"].startswith("https://")
+                    and host_of(link) == host_of(src["url"])):
+                link = "https://" + link[len("http://"):]
             if not link or link in seen_links:
                 continue
 
             age = _entry_age_days(entry)
-            if age is not None and age > MAX_AGE_DAYS:
+            # Some official catalogues keep the original record creation date
+            # while updating the intake year. Only explicitly configured sources
+            # may bypass publication age; their live detail page must be read.
+            age_limit = src.get("max_age_days", MAX_AGE_DAYS)
+            if age is not None and age_limit is not None and age > age_limit:
                 stale += 1
                 continue
 
@@ -151,17 +162,18 @@ def scrape_rss(src):
             summary = entry.get("summary") or entry.get("description") or ""
             # to'liq matn bo'lsa (content:encoded) — undan foydalanamiz, deadline shu yerda bo'ladi
             if entry.get("content"):
-                try:
+                if isinstance(entry["content"], list) and isinstance(entry["content"][0], dict):
                     summary = entry["content"][0].get("value", summary)
-                except Exception:
-                    pass
             out.append({
                 "source_id": src["id"],
                 "kind": src["kind"],
                 "topic": src.get("topic", ""),
                 "title": _clean_html(entry.get("title", "")).strip(),
                 "url": link,
-                "summary": _clean_html(summary)[:SUMMARY_LIMIT],
+                "summary": opportunity_summary(summary, SUMMARY_LIMIT),
+                "feed_html": summary,
+                "fetch_details": src.get("fetch_details", False),
+                "detail_selector": src.get("detail_selector", "main, article"),
             })
 
         if len(out) >= MAX_PER_SOURCE:
@@ -178,7 +190,7 @@ def scrape_rss(src):
 # ──────────────────────────────────────────────────────────────────────
 # Emoji, ko'rinmas belgilar va bezak chiziqlari — sarlavha boshidan tozalanadi
 _DECOR = re.compile(
-    r"^[\s​-‏⁠﻿ "
+    r"^[\s​-\u200f⁠﻿ "
     r"\U0001F000-\U0001FAFF←-⯿☀-➿️⃣•▪▫◾◽●○*_\-—–=~#>»›|]+"
 )
 
@@ -253,18 +265,13 @@ def scrape_telegram(src):
             continue
 
         # Post ichidagi TASHQI havola — aynan shu grantning asl manzili bo'lishi mumkin
-        direct = ""
-        for a in body.find_all("a", href=True):
-            href = a["href"].strip()
-            if not href.lower().startswith("http"):
-                continue
-            if is_blocked(href) or is_aggregator(href):
-                continue
-            if host_of(href) in ("t.me", "telegram.me"):
-                continue
-            direct = clean_url(href)
-            if direct:
-                break
+        candidates, _ = _collect_candidates(body, post_link, host_of(post_link))
+        candidates.sort(reverse=True)
+        official = [href for _, href in candidates if not is_aggregator(href)]
+        aggregated = [href for _, href in candidates if is_aggregator(href)]
+        # Many source channels link only to their article. Preserve that route
+        # so resolve_grant can dig through the aggregator instead of losing it.
+        direct = clean_url((official or aggregated or [""])[0])
 
         title = _telegram_title(text)
 
@@ -275,7 +282,7 @@ def scrape_telegram(src):
             "title": title,
             "url": post_link,
             "direct_url": direct,
-            "summary": text[:SUMMARY_LIMIT],
+            "summary": opportunity_summary(str(body), SUMMARY_LIMIT),
         })
 
     note = f" ({stale} tasi eskirgan)" if stale else ""

@@ -106,7 +106,9 @@ class Client:
             except TypeError:
                 continue
             except Exception:
-                continue
+                # Network timeouts are not fingerprint mismatches. Trying all
+                # four profiles would multiply an unavailable host's timeout.
+                return None
         # Barcha profillar o'tmadi — taqlidsiz urinamiz
         try:
             return self._curl_session.get(url, **kw)

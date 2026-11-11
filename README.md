@@ -1,369 +1,143 @@
-# Nova Grants Bot
+# Nova Grants
 
-O'zbekiston yoshlari uchun xalqaro grant, stipendiya va fellowship imkoniyatlarini
-avtomatik topib, [@Nova_Grants](https://t.me/Nova_Grants) kanaliga chiqaradigan bot.
+O'zbekiston fuqarolari ariza topshira oladigan xalqaro stipendiya, fellowship,
+amaliyot, yozgi maktab, tanlov va yoshlar dasturlarini topib,
+[@Nova_Grants](https://t.me/Nova_Grants) kanaliga saralab beradigan bot.
 
-> **2026-08-06 auditi.** Quvur jonli o'lchandi va bir nechta jiddiy nosozlik
-> tuzatildi. Eng muhimlari: takror tekshiruvi chop etilgan grantning bazadagi
-> qatorini buzardi (eslatmalar shu sabab ishlamasdi), eslatmalarda aggregator
-> havolasi filtri yo'q edi, HTML zaxirasida URL escape qilinmagani uchun post
-> **havolasiz** chiqishi mumkin edi. Batafsil — quyidagi bo'limlarda.
->
-> O'lchangan natija: asl havola topish **58% → 80%**, yig'ilgan yozuv
-> **312 → 427**, 5 yillik o'lik kanallar olib tashlandi.
-
-**Uchta asosiy kafolat:**
-
-1. **Faqat asl havola.** Kanalga aggregator saytlarning reklamaga to'la maqolasi emas,
-   grantning rasmiy sahifasi tushadi. AI havolaga umuman tegmaydi — u faqat
-   imkoniyat *raqamini* qaytaradi, havolani tizim o'zi qo'yadi. Ya'ni AI havolani
-   o'zgartirishi texnik jihatdan mumkin emas.
-2. **Takror yo'q.** Bitta imkoniyat necha marta, necha manbada chiqmasin — kanalga
-   bir marta tushadi. Yagona istisno: muddati yaqinlashganda yuboriladigan eslatma.
-3. **Zamonaviy ko'rinish.** Telegram Bot API 10.1+ "rich messages" — sarlavhalar,
-   ro'yxatlar, yig'iladigan bo'limlar. Eski mijozlar uchun HTML zaxirasi
-   avtomatik ishlaydi.
-
----
+**2026-11-11 yangilanishi:** kod lokal `codex/reliability-audit` branchida.
+Production hali yangilanmagan. [Yakuniy audit](docs/FINAL_AUDIT_2026-11-11.md),
+[manbalar tekshiruvi](docs/SOURCES_2026-11-11.md),
+[xabar ko'rinishi namunasi](docs/post_preview.html).
 
 ## Qanday ishlaydi
 
-```
-1. YIG'ISH     26 ta manba (RSS + Telegram, sahifalash)  →  ~440 yozuv
-2. YANGILIK    60 kundan eski e'lonlar tashlanadi        →  faqat tirik e'lon
-3. SARALASH    yangilik/reklama/qo'llanma tashlanadi     →  ~300 yozuv
-4. ESKIRIB     avval ko'rilgan maqolalar tashlanadi      →  faqat yangilari
-5. QAZISH      maqola ichidan ASL havola topiladi        →  rasmiy sayt
-6. TAKROR      3 qatlamli tekshiruv                      →  betakror ro'yxat
-7. POST        Gemini mazmun yozadi → rich message → kanal
-8. ESLATMA     muddati yaqinlashganlar haqida
+```text
+30 manba → mavzu / muddat filtri → avvalgi source kalitlari
+         → rasmiy havola → bog'langan takror guruhlari
+         → eligibility dalili bilan Gemini saralashi
+         → rich xabar → kanal → Supabase yozuvi
+Supabase muddati yaqin posted yozuvlar → eslatma
 ```
 
-### 1-bosqich: sahifalash (`scraper.py`)
+- **30 manba:** 14 RSS, 16 Telegram; 10 rasmiy va 20 aggregator.
+- **Rasmiy link:** feed ichidagi ariza URL'lari ham ishlatiladi; aggregator URL'lari postga qo'yilmaydi.
+- **Yagona vakil:** bir dastur haqidagi bog'langan yozuvlardan eng ko'p dalili bor manba tanlanadi; postdan keyin qolganlari alias sifatida eslab qolinadi.
+- **Tashkilot doirasi:** umumiy bir xil sarlavha turli tashkilotlardagi grantlarni avtomatik birlashtirmaydi.
+- **Moslik dalili:** AI kartochkasi manba matnidan aynan olingan eligibility iqtibosini qaytarishi kerak. Fuqarolik va yashash talablari alohida tekshiriladi.
+- **Vaqtinchalik xato:** resolution/AI nosozligi doimiy rad etish deb saqlanmaydi; baza yozish xatosi yashirilmaydi.
+- **Emojisiz uslub:** sarlavha, yig'iladigan tafsilotlar, tashqarida ko'rinadigan muddat, bitta ariza tugmasi.
 
-WordPress feed'lari bir sahifada atigi 10 ta yozuv beradi, lekin `?paged=2`
-va `?paged=3` yana 10 tadan **noyob** yozuv qaytaradi. Manbaga `"pages": 3`
-qo'yilsa, o'sha ishonchli manbadan uch barobar ko'p qamrov olinadi — yangi
-manba qidirishdan ko'ra arzon va aniqroq yo'l.
+Barcha dunyo dasturlarini topish yoki barcha vaziyatlarda takror bo'lmasligi
+kafolatlanmaydi. Muhim qoldiq cheklovlar auditda dalillari bilan yozilgan.
 
-### 2-bosqich: yangilik chegarasi
+## O'rnatish
 
-Ilgari na RSS, na Telegram uchun sana tekshirilmasdi. Natijada 2021-yilda
-to'xtab qolgan kanallar besh yillik postlarini "yangi imkoniyat" sifatida
-quvurga tiqib turardi. Endi `MAX_AGE_DAYS = 60` dan eski yozuv olinmaydi.
-Sanasi noma'lum yozuv o'tkaziladi — ko'p feed'da sana bo'lmaydi.
-
-### 4-bosqich: asl havola qazish (`link_resolver.py`)
-
-Muammo shundaki, RSS'dagi havola aggregator maqolasiga olib boradi:
-
-```
-❌ https://opportunitydesk.org/2026/08/03/kas-saiia-scholarships-2027/   ← reklama
-✅ https://pages.services/briefings.themidpoint.org.za/2027-kas-saiia-.../ ← ariza sahifasi
-```
-
-Modul maqolani ochib, ichidagi barcha havolalarni baholaydi: anchor matni
-("Official website", "Apply now", "Rasmiy veb-sayt"), URL yo'li, domen turi va
-maqoladagi o'rni. Eng yuqori ballisi tanlanadi, redirect'lar ochiladi.
-Agar topilgan havola yana aggregator bo'lsa — yana bir bosqich chuqurroq qaziydi.
-
-Asl havola topilmasa, yozuv **umuman post qilinmaydi**.
-
-### 6-bosqich: takrorga qarshi 3 qatlam (`database.py`)
-
-| Qatlam | Nima ushlaydi |
-|---|---|
-| `source_key` | Avval ko'rilgan maqola — qayta ochilmaydi ham (tarmoq tejaladi) |
-| `url_key` | 8 ta aggregator bitta rasmiy saytga olib borsa, faqat bittasi o'tadi |
-| `fingerprint` | Sarlavha barmoq izi — havolalar biroz farq qilsa ham ushlaydi |
-
-`url_key` — bu URL ning normallashgan ko'rinishi:
-`http://www.Example.com/Grant/?utm_source=rss` → `example.com/grant`
-
-`fingerprint` **ataylab cheklangan**: 2 tadan kam mazmunli so'z qolsa bo'sh
-qaytaradi. "Oxford Scholarship" va "Oxford Fellowship" ni bitta grant deb
-hisoblab qo'yish — o'tkazib yuborilgan takrordan xavfliroq, chunki haqiqiy
-imkoniyat jimgina yo'qoladi.
-
-> **"posted" yozuv hech qachon pasaytirilmaydi.**
-> Ilgari 5-bosqich takror topilgan grantni `status="skipped"` bilan qayta
-> yozardi va upsert mavjud qatorni ustidan bosardi: `deadline` NULL bo'lardi,
-> `reminder_sent` False ga qaytardi. Ya'ni **2+ manbada chiqqan har qanday
-> grant eslatma ololmasdi**. Endi takror faqat MANBA MAQOLASI kaliti bilan
-> `status="duplicate"` qilib yoziladi, grantning o'z qatoriga tegilmaydi.
-
----
-
-## Ishga tushirish
-
-### 1. Bazani tayyorlash (bir marta)
-
-Supabase → SQL Editor → [`migration.sql`](migration.sql) faylini to'liq nusxalab
-**Run** bosing. U yangi ustunlarni qo'shadi va eski yozuvlarni moslashtiradi.
-
-### 2. Kalitlar
-
-`.env.example` ni `.env` deb nusxalab to'ldiring. GitHub Actions uchun esa:
-**Settings → Secrets and variables → Actions** ga quyidagilarni qo'shing:
-
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `GEMINI_API_KEY`,
-`SUPABASE_URL`, `SUPABASE_KEY`
-
-### 3. Ishga tushirish
+Python 3.11 yoki 3.13 bilan:
 
 ```bash
-pip install -r requirements.txt
-python -m pytest tests/ -q  # tarmoqsiz testlar (~1s)
-python main.py --dry-run    # kanalga yubormasdan sinash
-python main.py              # haqiqiy yurish
+python -m venv .venv
+# Windows: .venv/Scripts/activate
+# Linux/macOS: source .venv/bin/activate
+python -m pip install --upgrade 'pip>=26.2,<27'
+python -m pip install -r requirements.txt -c constraints.txt
+# Ixtiyoriy brauzer TLS mijozi:
+python -m pip install -r requirements-optional.txt -c constraints.txt
 ```
 
-GitHub Actions har kuni **~08:10 (Toshkent)** da avtomatik ishga tushadi.
-Qo'lda ishga tushirish: Actions → Nova Grants Bot → Run workflow
-(u yerda "quruq sinov" tugmasi ham bor).
+`constraints.txt` — tekshirilgan paketlar snapshot'i. Yangilashdan keyin testlar
+va dependency audit qayta bajarilishi kerak.
 
-> Cron `20 0 * * *` (00:20 UTC) qilib qo'yilgan, garchi maqsad 08:10 Toshkent
-> (03:10 UTC) bo'lsa ham. Sabab: GitHub Actions rejalashtirilgan yurishni
-> navbatda ushlab turadi — o'lchangan kechikish 2s42d–3s17d. Ilgari `0 3`
-> turardi va postlar 08:00 emas, ~10:45 da chiqardi.
+`.env.example` ni `.env` deb nusxalab to'ldiring. Production uchun:
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `GEMINI_API_KEY` (yoki `GEMINI_API_KEYS`),
+`SUPABASE_URL`, `SUPABASE_KEY`. `ADMIN_ID` — ixtiyoriy kunlik/nosozlik hisoboti.
 
-### Testlar
+Baza: `posted_grants` jadvali mavjud bo'lishi kerak. `migration.sql` mavjud
+jadvalni yangilaydi; toza Supabase loyihasi uchun boshlang'ich CREATE TABLE
+skripti hozir alohida tayyorlanmagan. Ishlayotgan baza va ruxsatlarni bilmasdan
+migratsiyani qayta ishga tushirmang; tarixiy `migration_fix.sql` ma'lumot uchun
+saqlangan. RLS/key roli masalasi yakuniy auditda ko'rsatilgan.
 
-`tests/test_pipeline.py` — tarmoqsiz, ~1 soniya. Har bir test **jonli kanalda
-sodir bo'lgan** nosozlikni qaytarib kelmasligini tekshiradi: xom `&` tufayli
-havolaning yo'qolishi, o'tib ketgan muddat, "How I Won..." tipidagi maqolalar,
-bo'lingan xabarda ochiq qolgan teglar. Yangi xato topsangiz — avval shu yerga
-test yozing. CI botdan **oldin** shu testlarni ishga tushiradi.
+```bash
+python main.py --dry-run
+python main.py
+```
 
----
+`--dry-run` Telegram'ga hech narsa yubormaydi va bazani o'zgartirmaydi.
+U manba saytlarini o'qiydi, sozlangan bo'lsa Gemini va Supabase o'qishlaridan
+foydalanadi. AI kaliti bo'lmasa tekshirilmagan mazmun nashr qilinmaydi.
 
-## Fayllar
+## Telegram formati
 
-| Fayl | Vazifasi |
-|---|---|
-| `main.py` | Quvurni boshqaradi |
-| `sources.py` | Manba katalogi (har biri jonli tekshirilgan) |
-| `scraper.py` | RSS / Telegram / grants.gov API dan yig'ish |
-| `filters.py` | Bu imkoniyatmi yoki yangilikmi — hal qiladi, muddatni topadi |
-| `http_client.py` | Brauzer TLS izi bilan HTTP — bot himoyasidan o'tish |
-| `link_resolver.py` | **Asl havolani qazish** va URL normallashtirish |
-| `database.py` | Supabase, takrorga qarshi 3 qatlam |
-| `ai_agent.py` | Gemini bilan tuzilgan mazmun (havolasiz!) |
-| `post_builder.py` | Mazmundan rich bloklar + HTML zaxira quradi |
-| `telegram_bot.py` | Kanalga yuborish, limitlarga rioya |
-| `migration.sql` | Baza sxemasini yangilash |
-| `tests/` | Tarmoqsiz testlar — CI da botdan oldin ishlaydi |
-| `tools/` | Manbalarni tekshirish va API sxemasini o'rganish skriptlari |
+Rasmiy [Bot API hujjati](https://core.telegram.org/bots/api) asosida ishlatilayotgan
+bloklar `rich_schema.py` da tekshiriladi. Rich xabar rad etilsa avval yangi
+ko'rinish elementlari olib tashlangan eski rich format, keyin oddiy HTML
+zaxirasi sinaladi. Timeout yoki noaniq yuborish natijasida avtomatik boshqa
+formatda qayta post qilinmaydi.
 
-### Telegram rich messages
+HTML zaxira `sendMessage` uchun alohida 4096 chegarasiga mos bo'linadi.
+Rich bloklar soni, ichma-ichligi, matn va tugma strukturalari alohida tekshiriladi.
+Kanalga yuboriladigan xabarlar uchun callback server talab qilmaydigan ariza
+amali va ichki navigatsiya tanlangan. Shaxsiy-chat HTML widgetlari kanalga yuborilmaydi.
+Har bir grantda bitta ariza tugmasi bor: takroriy link va nusxalash tugmasi yo'q.
+Original postni kanal manbasi bilan tarqatish Telegram'ning native Forward amali orqali ishlaydi.
 
-Rich messages Bot API **10.1** (2026-yil 11-iyun) da qo'shildi, **10.2**
-(14-iyul) da kengaytirildi. Botda **hech narsa yoqish shart emas** —
-BotFather sozlamasi ham, obuna ham kerak emas. Faqat media bloklari uchun
-botda o'sha chatga media yuborish huquqi talab qilinadi (bizda media yo'q).
+## Tekshirish
 
-Maydon nomlari **faqat rasmiy hujjatdan** olinadi (`InputRichBlock*`,
-2026-08-06 da `core.telegram.org/bots/api` dan tasdiqlangan):
+```bash
+python -m pytest tests/ -q
+python tools/check_rich_spec.py
+python -m pip check
+python tools/check_sources.py --json docs/source_health_latest.json
+python tools/preview_post.py
+```
 
-| Blok | Sinf | Tuzilishi |
-|---|---|---|
-| `heading` | `InputRichBlockSectionHeading` | `{"type","text","size"}` — size 1–6, **1 eng katta** |
-| `paragraph` | `InputRichBlockParagraph` | `{"type","text"}` |
-| `footer` | `InputRichBlockFooter` | `{"type","text"}` |
-| `divider` | `InputRichBlockDivider` | `{"type"}` |
-| `list` | `InputRichBlockList` | `{"type","items"}`, item: `{"blocks":[...]}` |
-| `details` | `InputRichBlockDetails` | `{"type","summary","blocks"}` + ixtiyoriy `is_open: true` |
-| havola | `RichTextUrl` | `{"type":"url","url":...,"text":...}` |
+Windows'da host pytest plaginlari xalaqit qilsa:
 
-Diqqat: sinf nomi `InputRichBlockSectionHeading` bo'lsa ham, JSON dagi
-`type` qiymati **`"heading"`**. Ikkalasini adashtirmang.
+```powershell
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = '1'
+.\.venv\Scripts\python.exe -m pytest tests/ -q
+```
 
-10.2 da qo'shilgan, hozircha ishlatilmaydigan bloklar: `blockquote`,
-`pullquote`, `table`, `photo`/`collage`/`slideshow`, `pre`, `map`,
-`thinking`, hamda `sendRichMessageDraft`. Ro'yxat elementlari `has_checkbox`,
-`is_checked` va tartib raqami (`value`, `type`) ni ham qo'llab-quvvatlaydi.
-
-> ⚠️ **Rich message `t.me/s/<kanal>` web ko'rinishida OCHILMAYDI** — u yerda
-> "Please open Telegram to view this post" chiqadi. Ya'ni kanal Google'da
-> indekslanmaydi va havola preview'i ishlamaydi. Bu Telegram'ning cheklovi,
-> koddagi xato emas. O'sish web orqali muhim bo'lsa, `publish()` ni HTML
-> rejimiga o'tkazish kerak bo'ladi.
-
-`InputRichMessage` da `html`, `markdown` yoki `blocks` dan **aynan bittasi**
-bo'lishi kerak. `text` degan maydon yo'q.
-
-> ⚠️ **Jonli API'ni "probe" qilib sxema aniqlash CHALG'ITADI.** Telegram
-> noma'lum maydonlarni parse bosqichida rad etmaydi va mazmun tekshiruvini chat
-> topilgandan keyin bajaradi. Shuning uchun `{"header": ...}` (to'g'risi
-> `summary`) va `items: [{"text": ...}]` (to'g'risi `{"blocks": [...]}`) —
-> ikkalasi ham `chat_id=1` bilan "yaroqli" ko'rindi, lekin haqiqiy kanalda
-> `RICH_MESSAGE_CONTENT_REQUIRED` xatosini berdi.
->
-> Shu sabab `tools/check_rich_spec.py` yozildi — u bloklarni hujjat sxemasiga
-> solishtiradi. Blok tuzilishini o'zgartirsangiz, avval shuni ishga tushiring.
-
-Cheklovlar (hujjatdan): **32 768 belgi**, **500 blok** (ichkilari bilan),
-16 daraja ichma-ichlik, 50 media, jadvalda 20 ustun. Mijozlar ~8000 belgidan
-keyin "Show more" tugmasini ko'rsatadi.
-
-Rich message ishlamasa, `publish()` avtomatik HTML ko'rinishga o'tadi —
-ikkalasi ham `post_builder.py` da bir manbadan quriladi, shuning uchun mazmun
-va havolalar bir xil bo'ladi.
-
----
+143 ta tarmoqsiz regression/integratsiya testi Python 3.11 va 3.13'da o'tgan.
+Testlar haqiqiy `.env`/kalitlarni yuklamaydi, socket ulanishlarini bloklaydi.
+Jonli manba tekshiruvi va URL smoke natijalari `docs/` ichida sanasi bilan saqlangan.
+Yangi testlar, statik correctness/security va dependency audit push/PR workflow'iga qo'shilgan.
 
 ## Sozlash
 
-`main.py` boshida:
-
-```python
-MAX_RESOLVE_PER_RUN = 70   # bir yurishda nechta maqola ochiladi
-MAX_POST_PER_RUN    = 32   # bir kunda kanalga nechta yangi imkoniyat
-RESOLVE_WORKERS     = 5    # parallel oqim
+```text
+main.py:     MAX_RESOLVE_PER_RUN=80, MAX_POST_PER_RUN=32, RESOLVE_WORKERS=14
+scraper.py:  MAX_PER_SOURCE=60, MAX_AGE_DAYS=60
+.env:        GEMINI_THINKING_LEVEL=medium, AI_TIMEOUT_SECONDS=240
+ai_agent.py: BATCH_SIZE=8; muharrirga maksimal 8, link tanlashga 2 urinish
 ```
 
-`scraper.py`:
+Bir nechta manbalar resolution limitini round-robin bo'yicha bo'lishadi.
+Yangi kalitda 3.6 Flash ikki takroriy saralash sinovidan o'tdi; standart zanjir 3.8 Flash → 3.7 Flash → 3.6 Flash (medium), GEMINI_MODELS bilan boshqariladi. Keng sifat benchmarki hali bajarilmagan.
 
-```python
-MAX_PER_SOURCE = 60        # bitta manbadan ko'pi bilan shuncha yozuv
-MAX_AGE_DAYS   = 60        # bundan eski e'lon umuman olinmaydi
-```
+GitHub Actions `20 0 * * *` (05:20 Toshkent) cron'i bilan navbatga qo'yiladi.
+Haqiqiy boshlanish vaqti kafolatlanmaydi. Qo'lda Actions → Nova Grants Bot →
+Run workflow, kerak bo'lsa `dry_run=true`.
 
-`ai_agent.py`:
+## Fayllar
 
-```python
-MODEL_CHAIN = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
-BATCH_SIZE  = 8            # bitta AI so'roviga nechta grant
-temperature = 0.35         # faktlar barqaror bo'lishi uchun (0.9 emas)
-```
-
-### Manba qo'shish
-
-`sources.py` ga yozuv qo'shing va tekshiring:
-
-```bash
-python tools/check_sources.py
-```
-
-Agar sayt aggregator bo'lsa (ya'ni grantni "qayta hikoya qiladi"), uning domenini
-`link_resolver.py` dagi `AGGREGATORS` ro'yxatiga ham qo'shing — aks holda uning
-o'z havolasi kanalga tushib qoladi.
-
----
-
-## Nima uchun ba'zi manbalar yo'q
-
-`sources.py` dagi `DISABLED` lug'atida har bir olib tashlangan manba sababi bilan
-yozilgan. Uch turkum:
-
-- **Texnik**: RSS o'chirilgan, HTTP 403/404, Cloudflare himoyasi
-- **Mavzu**: TechCrunch, Hacker News, Crunchbase kabi yangilik lentalari —
-  ularda grant yo'q, "startup $5M jalb qildi" tipidagi postlar bor
-- **O'lik**: oxirgi posti bir necha yil oldin bo'lgan Telegram kanallari
-
-### Bot himoyasi bo'lgan saytlar (`http_client.py`)
-
-Bir qancha sayt Python `requests` ga **umuman javob bermaydi**, lekin
-Chrome'da bemalol ochiladi. Sabab **cookie emas — TLS barmoq izi**.
-
-Har bir HTTP mijoz TLS qo'l berishida shifr to'plamlari va kengaytmalarni
-o'ziga xos tartibda yuboradi (JA3/JA4 izi). `requests` (OpenSSL) ning izi
-Chrome nikidan tubdan farq qiladi va Cloudflare/Akamai buni birinchi
-paketdayoq aniqlaydi — User-Agent ni qanday yozganingizdan qat'i nazar.
-
-Shu sababli **brauzerdan cookie ko'chirish yordam bermaydi**:
-
-- `cf_clearance` cookie IP + User-Agent + TLS iziga bog'langan. Toshkentdagi
-  brauzeringizdan olingan cookie GitHub Actions serveridan yuborilganda
-  darrov rad etiladi.
-- Muddati odatda 30 daqiqa – 24 soat. Bot kuniga bir marta ishlaydi, ya'ni
-  cookie ni har kuni qo'lda yangilash kerak bo'lardi.
-- Akamai (chevening.org, britishcouncil.org) cookie ga deyarli tayanmaydi —
-  u TLS va HTTP/2 kadr tartibiga qaraydi.
-
-Yechim — `curl_cffi`, Chrome ning aynan o'sha izini taqlid qiladi:
-
-| Sayt | `requests` | `curl_cffi` |
-|---|---|---|
-| chevening.org | ReadTimeout | **200** (108 KB) |
-| britishcouncil.org | ConnectionError | **200** (54 KB) |
-| opportunitiesforyouth.org | 429 | **200** (254 KB) |
-
-Hammasi ham ochilmaydi. `daad.de` va `fellowshipbard.com` **TCP darajasida**
-javob bermaydi — bu bot himoyasi emas, tarmoq/geo to'siq (TLS ulanishning
-o'zi tugamaydi). `eurodesk.eu` va `scholarshiptab.com` 403 da qoladi.
-
-`curl_cffi` o'rnatilmagan bo'lsa modul jimgina oddiy `requests` ga qaytadi —
-bot to'xtamaydi, faqat o'sha manbalar yopiq qoladi.
-
-> 429 kelganda **ikkinchi mijoz bilan darrov qayta urinilmaydi.** 429
-> "sekinlashtir" degani; boshqa mijoz bilan qayta so'rash bloklanishni
-> uzaytiradi. Kutish `scraper.py` va `link_resolver.py` ning ishi.
-
-### Rasmiy manbalar nega kam
-
-2026-08-06 da 40+ rasmiy sayt jonli tekshirildi — `chevening.org`, `daad.de`,
-`britishcouncil.org`, `turkiyeburslari.gov.tr`, `stipendiumhungaricum.hu`,
-`euraxess`, `salto-youth`, `unjobs`, `jobs.ac.uk`, `mastersportal` va h.k.
-**Deyarli hech birida ishlaydigan RSS yo'q**: 404, JS bilan yuklanadigan
-sahifa yoki bot himoyasi. `api.reliefweb.int` v1 o'chirilgan (410), EU
-Funding & Tenders API kalit talab qiladi.
-
-Shu sabab qamrov aggregatorlar + **sahifalash** orqali kengaytirildi:
-tekshirilgan manbadan 10 emas, 30 ta yozuv olinadi. Ishlaydigan rasmiy
-manbalar — `uz.usembassy.gov` (Fulbright, UGRAD) va `youth.europa.eu`.
-
-Yangi manba qo'shishdan oldin `python tools/check_sources.py` ni ishga
-tushiring: u har bir manbaning holatini va yozuv sonini ko'rsatadi.
-
----
-
-## Limitlar
-
-**Telegram Bot API**: bitta chatga sekundiga 1 xabar, guruhga daqiqasiga 20 ta,
-xabar uzunligi 4096 belgi. `telegram_bot.py` postni grant chegarasida bo'ladi —
-HTML tegi hech qachon o'rtasidan kesilmaydi — va 429 kelsa `retry_after` qadar kutadi.
-
-**Gemini**: `thinking_level="low"` sozlamasi bilan bitta so'rov ~470 token
-(sozlamasiz 1620 edi). Model band bo'lsa (`503`) avtomatik zaxira modelga o'tadi.
-
-**Manba saytlar**: bitta domenga 3 soniyada bir marta murojaat qilinadi. `429`
-qaytargan sayt 2 daqiqaga chetlab o'tiladi. RSS yig'ishda `429`/`503` kelsa
-`Retry-After` ga rioya qilib 2 marta qayta uriniladi.
-
----
-
-## Uzoq muddat ishlashi
-
-**Eng katta xavf — GitHub'ning 60 kunlik qoidasi.** Ochiq repozitoriyada
-`schedule` bilan ishlaydigan workflow, repozitoriyada 60 kun **hech qanday
-faollik** bo'lmasa, avtomatik o'chiriladi. Botning o'z yurishlari faollik
-hisoblanmaydi — faqat commit hisoblanadi. Ya'ni ikki oy kodga tegmasangiz,
-kanal jimgina to'xtaydi.
-
-`.github/workflows/keepalive.yml` oyiga bir marta kichik commit qilib buni
-oldini oladi. **Zaxira reja:** Actions → "Nova Grants Bot" → *Enable
-workflow*, yoki har 2 oyda istalgan commit yuborish.
-
-Qolgan omillar:
-
-| Omil | Holat |
+| Fayl | Vazifa |
 |---|---|
-| Actions daqiqalari | Ochiq repo — **cheksiz va bepul** |
-| Supabase (bepul) | 7 kun murojaatsiz qolsa to'xtaydi. Bot har kuni murojaat qiladi ✔ |
-| Supabase hajmi | ~2 800 qator, yiliga ~30 000 qo'shiladi. 500 MB chegarasidan juda uzoq ✔ |
-| Gemini (bepul) | Yurishiga ~10 000 token. Kvota chegarasidan ancha past ✔ |
-| Telegram tokeni | Muddati yo'q ✔ |
-| Manbalar | **Vaqt o'tishi bilan buziladi.** Choraklik `python tools/check_sources.py` |
-| `actions/checkout@v4` | Bir necha yildan keyin yangilash kerak bo'ladi |
+| `sources.py` | Manbalar, o'chirish sabablari va source-specific siyosatlar |
+| `scraper.py` | RSS/Telegram/API yig'ish va yangilik chegarasi |
+| `opportunity_content.py` | Uzun maqoladan eligibility/deadline dalillarini saqlash |
+| `filters.py` | Mavzu va muddat filtrlari |
+| `http_client.py` | HTTP va ixtiyoriy TLS mijozi |
+| `link_resolver.py` | Rasmiy URL, redirect, kalitlar va dastur identifikatori |
+| `database.py` | Dedup o'qish, tasdiqlangan saqlash va eslatma holati |
+| `ai_agent.py` | Tuzilgan javob, moslik iqtibosi va AI urinish chegaralari |
+| `post_builder.py` | Bir mazmundan rich bloklar va HTML |
+| `rich_schema.py` | Yuboriladigan rich formatning lokal validatori |
+| `telegram_bot.py` | Xabar bo'lish, yuborish va aniq/noaniq xato farqi |
+| `main.py` | Yig'ishdan nashrgacha quvur va kunlik hisobot |
+| `tests/` | Tarmoqsiz testlar |
+| `tools/` | Manba/sxema tekshiruvi va mahalliy ko'rinish |
+| `docs/` | Auditlar, tekshiruv dalillari va namuna |
 
-## Nosozlik bildirishnomasi
-
-`.env` da `ADMIN_ID` bo'lsa, yurish oxirida muammo topilganda botga shaxsiy
-xabar keladi:
-
-- asl havola topish darajasi 35% dan pastga tushsa
-- aggregator havolasi xavfsizlik to'ridan o'tib ketsa
-- nomzodlar bor edi, lekin hech biri post qilinmasa
-
-Sozlanmagan bo'lsa jimgina o'tkazib yuboriladi.
+`legacy/` dagi skriptlarni avtomatik ishga tushirmang: ayrimlari tashqi kanalga
+xabar yuboradi va eski interfeyslar uchun yozilgan.

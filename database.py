@@ -10,8 +10,8 @@ TAKRORGA QARSHI UCH QATLAM:
 
 Yozuv holati (status):
   "posted"    — kanalga chiqdi
-  "skipped"   — chiqmadi (asl havola topilmadi, AI rad etdi va h.k.).
-                Baribir yozib qo'yamiz — ertaga qayta urinib vaqt sarflamaslik uchun.
+  "skipped"   — AI muvaffaqiyatli tekshirgan, ammo mos emas deb topgan maqola.
+                Havola/AI vaqtinchalik xatosi bu holatda saqlanmaydi.
   "duplicate" — boshqa aggregatorda chiqqan, bazada allaqachon bor grant.
                 Bu yozuv MANBA MAQOLASI kaliti bilan saqlanadi, grantning o'zi emas.
 
@@ -23,7 +23,7 @@ yozardi va upsert mavjud qatorni ustidan bosardi. Natijada:
   • `reminder_sent` False ga qaytardi,
   • `source_key` boshqa aggregatorniki bilan almashardi.
 Ya'ni 2+ manbada chiqqan har qanday grant eslatma ololmay qolardi. Endi
-`save_grant()` avval qatorni o'qiydi va pasaytirishni rad etadi.
+`save_grant()` avval qatorni o'qiydi va posted qatorni o'zgartirmaydi.
 
 Yangi ustunlar kerak — migration.sql ni Supabase SQL Editor da bir marta ishlating.
 """
@@ -65,7 +65,7 @@ def init_db(strict: bool = True) -> bool:
     if not supabase:
         print("Baza sozlanmagan.")
         if strict:
-            sys.exit(1)
+            raise RuntimeError("Baza sozlanmagan")
         return False
 
     try:
@@ -73,23 +73,23 @@ def init_db(strict: bool = True) -> bool:
     except Exception as e:
         print(f"Bazaga ulanib bo'lmadi: {e}")
         if strict:
-            sys.exit(1)
+            raise RuntimeError("Bazaga ulanib bo'lmadi") from e
         return False
 
-    missing = []
-    for col in ("url_key", "source_key", "fingerprint", "status"):
-        try:
-            supabase.table(TABLE).select(col).limit(1).execute()
-        except Exception:
-            missing.append(col)
+    required = ("url", "source_url", "url_key", "source_key", "fingerprint", "status", "deadline", "reminder_sent")
+    missing = False
+    try:
+        supabase.table(TABLE).select(",".join(required)).limit(1).execute()
+    except Exception:
+        missing = True
 
     if missing:
         print("=" * 66)
-        print(f"BAZADA USTUNLAR YETISHMAYAPTI: {', '.join(missing)}")
+        print(f"BAZA SXEMASI YOKI O'QISH HUQUQI TEKSHIRILMADI: {', '.join(required)}")
         print("migration.sql faylini Supabase SQL Editor da ishga tushiring.")
         print("=" * 66)
         if strict:
-            sys.exit(1)
+            raise RuntimeError("Baza sxemasi tayyor emas")
         return False
 
     try:
@@ -103,7 +103,7 @@ def init_db(strict: bool = True) -> bool:
     return True
 
 
-def _collect(column: str, values: list) -> set:
+def _collect(column: str, values: list, posted_only: bool = False) -> set:
     """Berilgan ustun bo'yicha bazada allaqachon bor qiymatlarni qaytaradi."""
     global HAS_SEMANTIC_SLUG
     found = set()
@@ -117,7 +117,10 @@ def _collect(column: str, values: list) -> set:
     for i in range(0, len(uniq), CHUNK):
         batch = uniq[i:i + CHUNK]
         try:
-            resp = supabase.table(TABLE).select(column).in_(column, batch).execute()
+            query = supabase.table(TABLE).select(column).in_(column, batch)
+            if posted_only:
+                query = query.eq("status", "posted")
+            resp = query.execute()
             for row in resp.data or []:
                 if row.get(column):
                     found.add(row[column])
@@ -129,7 +132,7 @@ def _collect(column: str, values: list) -> set:
             # Bazani o'qib bo'lmasa — to'xtaymiz. Aks holda hamma narsa
             # "yangi" ko'rinib, kanalga takror post yog'iladi.
             print(f"Bazani o'qishda xatolik ({column}): {e}")
-            sys.exit(1)
+            raise RuntimeError(f"Dedup bazasi o'qilmadi: {column}") from e
     return found
 
 
@@ -140,19 +143,48 @@ def get_seen_source_keys(source_keys: list) -> set:
 
 def get_seen_url_keys(url_keys: list) -> set:
     """Allaqachon post qilingan asl havolalar."""
-    return _collect("url_key", url_keys)
+    return _collect("url_key", url_keys, posted_only=True)
 
 
 def get_seen_fingerprints(fingerprints: list) -> set:
     """Allaqachon post qilingan sarlavha barmoq izlari."""
-    return _collect("fingerprint", fingerprints)
+    return _collect("fingerprint", fingerprints, posted_only=True)
 
 
-def make_semantic_slug(title: str, host: str, deadline: str = None) -> str:
-    """Yagona semantik hesh/slug yaratadi: masalan 'turkiye-burslari-2027-turkiyeburslari-gov-tr'."""
+def get_seen_fingerprint_scopes(fingerprints: list) -> set:
+    """A generic title at two unrelated institutions is not one opportunity."""
+    from link_resolver import root_domain, host_of
+    values = list(dict.fromkeys(v for v in fingerprints if v))
+    if not supabase or not values:
+        return set()
+    found = set()
+    try:
+        for start in range(0, len(values), CHUNK):
+            response = (supabase.table(TABLE).select("fingerprint,url")
+                        .in_("fingerprint", values[start:start + CHUNK]).eq("status", "posted").execute())
+            found.update((r["fingerprint"], root_domain(host_of(r.get("url", ""))))
+                         for r in response.data or [] if r.get("fingerprint"))
+    except Exception as exc:
+        raise RuntimeError("Sarlavha va tashkilot bo'yicha dedup o'qilmadi") from exc
+    return found
+
+
+def make_semantic_slug(title: str, host: str, deadline: str = None, url: str = "") -> str:
+    """Yagona semantik slug/kalit yaratadi.
+
+    Tashkilot va dastur kodi mavjud bo'lsa (masalan kaust:mewc, daad:epos, turkiyeburslari)
+    -> 'kaust.edu.sa:kaust:mewc' kabi invariant kalit qaytaradi.
+    Aks holda sarlavha va domen asosida slug yaratadi.
+    """
     import re
+    from link_resolver import program_fingerprint, root_domain
+    prog = program_fingerprint(title, url or host)
+    r_dom = root_domain(host) or host
+    if prog:
+        return f"{r_dom}:{prog}".lower()
+
     clean_t = re.sub(r"[^a-z0-9]+", "-", (title or "").lower()).strip("-")
-    clean_h = re.sub(r"[^a-z0-9]+", "-", (host or "").lower()).strip("-")
+    clean_h = re.sub(r"[^a-z0-9]+", "-", (r_dom or host or "").lower()).strip("-")
     year = ""
     if deadline:
         m = re.search(r"202[5-9]", str(deadline))
@@ -168,167 +200,126 @@ def make_semantic_slug(title: str, host: str, deadline: str = None) -> str:
 
 def get_seen_semantic_slugs(slugs: list) -> set:
     """Allaqachon post qilingan semantik sluglar."""
-    return _collect("semantic_slug", slugs)
+    return _collect("semantic_slug", slugs, posted_only=True)
 
 
-def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted",
-               key: str = None):
-    """Yozuvni bazaga qo'shadi yoki yangilaydi.
+class DatabaseWriteError(RuntimeError):
+    """Persistence failed: stop publishing instead of silently forgetting posts."""
 
-    Kafolatlar:
-      • "posted" qator hech qachon "skipped"/"duplicate" ga pasaymaydi
-      • Agregator havolasi hech qachon "posted" deb saqlanmaydi (faqat asl havola)
-      • mavjud `deadline` bo'sh qiymat bilan o'chirilmaydi
-      • `reminder_sent` faqat YANGI qator qo'shilganda False qilinadi
-    """
-    if not supabase:
-        return
 
-    if deadline_iso and (deadline_iso == "null" or len(str(deadline_iso)) < 10):
-        deadline_iso = None
+def _grant_row(entry: dict) -> dict:
+    from link_resolver import is_aggregator, host_of
 
-    url_key = key or grant.get("url_key") or grant.get("source_key") or ""
-    if not url_key:
-        return
+    g = entry.get("grant", {})
+    status = entry.get("status", "posted")
+    posted = status == "posted"
+    target_url = g.get("url") or g.get("source_url", "")
+    if posted and is_aggregator(target_url):
+        raise DatabaseWriteError("Aggregator havolasi posted sifatida saqlanmaydi")
 
-    target_url = grant.get("url") or grant.get("source_url", "")
-    from link_resolver import is_aggregator
-    if status == "posted" and is_aggregator(target_url):
-        print(f"  🛑 XAVFSIZLIK: Agregator havolasi post sifatida saqlanmadi: {target_url[:60]}")
-        return
+    # The live schema has UNIQUE(url) as well as UNIQUE(url_key).
+    # Rejected/duplicate articles own their SOURCE identity, never the posted URL.
+    if not posted:
+        target_url = g.get("source_url") or target_url
+    key = entry.get("key") or (g.get("url_key") if posted else g.get("source_key"))
+    key = key or g.get("source_key") or g.get("url_key")
+    if not key or not target_url:
+        raise DatabaseWriteError("Grant uchun URL yoki dedup kaliti yo'q")
 
     row = {
-        "title": (grant.get("title") or "")[:255],
-        "url": target_url,
-        "url_key": url_key,
-        "source_url": grant.get("source_url", ""),
-        "source_key": grant.get("source_key", ""),
-        "fingerprint": grant.get("fingerprint", ""),
-        "status": status,
+        "title": (g.get("title") or "")[:255], "url": target_url,
+        "url_key": key, "source_url": g.get("source_url", ""),
+        "source_key": g.get("source_key", ""),
+        "fingerprint": g.get("fingerprint", ""), "status": status,
     }
-    if HAS_SEMANTIC_SLUG and grant.get("semantic_slug"):
-        row["semantic_slug"] = grant.get("semantic_slug")
-    if deadline_iso:
-        row["deadline"] = deadline_iso
+    deadline = entry.get("deadline_iso") or g.get("deadline_iso")
+    if deadline and deadline != "null" and len(str(deadline)) >= 10:
+        row["deadline"] = deadline
+    slug = g.get("semantic_slug") or make_semantic_slug(
+        g.get("title", ""), host_of(g.get("url") or target_url), deadline, g.get("url") or target_url)
+    if HAS_SEMANTIC_SLUG and slug:
+        row["semantic_slug"] = slug
+    return row
 
-    try:
-        existing = (supabase.table(TABLE).select("id,status")
-                    .eq("url_key", url_key).limit(1).execute())
-    except Exception as e:
-        print(f"  Bazani o'qib bo'lmadi ({url_key[:40]}): {str(e)[:100]}")
-        return
 
-    if existing.data:
-        current = (existing.data[0].get("status") or "").lower()
-        # Chop etilgan grantni pasaytirmaymiz — eslatma tizimi shunga tayanadi.
-        if current == "posted" and status != "posted":
+def _save_row(row: dict, existing: dict = None):
+    """Persist one row, protecting posted records even after an insert race."""
+    if existing is None:
+        response = (supabase.table(TABLE).select("url_key,status")
+                    .eq("url_key", row["url_key"]).limit(1).execute())
+        existing = response.data[0] if response.data else {}
+    if existing:
+        # A successful post is immutable here (including deadline/reminder_sent).
+        if existing.get("status") == "posted":
             return
+        query = supabase.table(TABLE).update(row).eq("url_key", row["url_key"])
+        # Compare-and-set: a concurrent promotion to posted must never be overwritten.
+        if existing.get("status") is None:
+            query = query.is_("status", "null")
+        else:
+            query = query.eq("status", existing["status"])
+        result = query.execute()
+    else:
         try:
-            supabase.table(TABLE).update(row).eq("url_key", url_key).execute()
-        except Exception as e:
-            print(f"  Bazaga yozib bo'lmadi: {str(e)[:120]}")
-        return
+            result = supabase.table(TABLE).insert({**row, "reminder_sent": False}).execute()
+        except Exception as exc:
+            code = str(getattr(exc, "code", ""))
+            if code == "23505" or "23505" in str(exc) or "duplicate key" in str(exc).lower():
+                response = (supabase.table(TABLE).select("url_key,status")
+                            .eq("url_key", row["url_key"]).limit(1).execute())
+                if response.data:
+                    return _save_row(row, response.data[0])
+            raise
+    if not result.data:
+        raise DatabaseWriteError("Baza yozishni tasdiqlamadi (RLS yoki parallel o'zgarish)")
 
-    row["reminder_sent"] = False
-    try:
-        supabase.table(TABLE).insert(row).execute()
-    except Exception as e:
-        msg = str(e)
-        # Poyga holati: shu oraliqda boshqa yurish qator qo'shgan bo'lishi mumkin.
-        if "duplicate key" in msg or "23505" in msg:
-            try:
-                supabase.table(TABLE).update(row).eq("url_key", url_key).execute()
-            except Exception as e2:
-                print(f"  Bazaga yozib bo'lmadi: {str(e2)[:120]}")
-            return
-        print(f"  Bazaga yozib bo'lmadi: {msg[:120]}")
+
+def save_grant(grant: dict, deadline_iso: str = None, status: str = "posted", key: str = None):
+    save_grants_batch([{"grant": grant, "deadline_iso": deadline_iso, "status": status, "key": key}])
 
 
 def save_grants_batch(items_with_meta: list):
-    """Bir nechta grantlarni yuqori tezlikda Supabase'ga to'plamli saqlaydi.
-
-    Tarmoq so'rovlarini 50x tezlashtiradi va bitta yurishda 100+ yozuvni
-    soniyaning ulushlarida qayta ishlaydi.
-    """
-    if not supabase or not items_with_meta:
+    """Batch inserts with explicit failure and immutable posted records."""
+    if not items_with_meta:
         return
+    if not supabase:
+        raise DatabaseWriteError("Baza sozlanmagan — yozuvlar saqlanmadi")
 
-    from link_resolver import is_aggregator
-    rows_to_save = []
-
+    # Collapse repeated keys before insertion; posted takes precedence.
+    rows = {}
     for entry in items_with_meta:
-        g = entry.get("grant", {})
-        status = entry.get("status", "posted")
-        key = entry.get("key")
-        deadline_iso = entry.get("deadline_iso") or g.get("deadline_iso")
-        if deadline_iso and (deadline_iso == "null" or len(str(deadline_iso)) < 10):
-            deadline_iso = None
+        row = _grant_row(entry)
+        previous = rows.get(row["url_key"])
+        if previous is None or previous["status"] != "posted":
+            rows[row["url_key"]] = row
 
-        url_key = key or g.get("url_key") or g.get("source_key") or ""
-        if not url_key:
-            continue
-
-        target_url = g.get("url") or g.get("source_url", "")
-        if status == "posted" and is_aggregator(target_url):
-            continue
-
-        row = {
-            "title": (g.get("title") or "")[:255],
-            "url": target_url,
-            "url_key": url_key,
-            "source_url": g.get("source_url", ""),
-            "source_key": g.get("source_key", ""),
-            "fingerprint": g.get("fingerprint", ""),
-            "status": status,
-        }
-        if HAS_SEMANTIC_SLUG and g.get("semantic_slug"):
-            row["semantic_slug"] = g.get("semantic_slug")
-        if deadline_iso:
-            row["deadline"] = deadline_iso
-        rows_to_save.append(row)
-
-    if not rows_to_save:
-        return
-
-    # url_key bo'yicha mavjudlarini bitta so'rovda aniqlaymiz
-    url_keys = [r["url_key"] for r in rows_to_save]
-    existing_map = {}
-    for i in range(0, len(url_keys), CHUNK):
-        batch_keys = url_keys[i:i + CHUNK]
-        try:
-            res = supabase.table(TABLE).select("url_key, status").in_("url_key", batch_keys).execute()
-            for item in res.data or []:
-                existing_map[item["url_key"]] = (item.get("status") or "").lower()
-        except Exception:
-            pass
-
-    to_insert = []
-    for r in rows_to_save:
-        uk = r["url_key"]
-        if uk in existing_map:
-            current_status = existing_map[uk]
-            if current_status == "posted" and r["status"] != "posted":
+    try:
+        keys = list(rows)
+        for start in range(0, len(keys), CHUNK):
+            part = keys[start:start + CHUNK]
+            result = supabase.table(TABLE).select("url_key,status").in_("url_key", part).execute()
+            existing = {r["url_key"]: r for r in result.data or []}
+            inserts = []
+            for key in part:
+                if key in existing:
+                    _save_row(rows[key], existing[key])
+                else:
+                    inserts.append({**rows[key], "reminder_sent": False})
+            if not inserts:
                 continue
             try:
-                supabase.table(TABLE).update(r).eq("url_key", uk).execute()
+                result = supabase.table(TABLE).insert(inserts).execute()
+                if len(result.data or []) != len(inserts):
+                    raise DatabaseWriteError("Baza barcha yozuvlarni tasdiqlamadi")
             except Exception:
-                pass
-        else:
-            r_copy = dict(r)
-            r_copy["reminder_sent"] = False
-            to_insert.append(r_copy)
-
-    if to_insert:
-        for i in range(0, len(to_insert), CHUNK):
-            batch_insert = to_insert[i:i + CHUNK]
-            try:
-                supabase.table(TABLE).insert(batch_insert).execute()
-            except Exception:
-                for single_row in batch_insert:
-                    try:
-                        supabase.table(TABLE).insert(single_row).execute()
-                    except Exception:
-                        pass
+                # The request may have committed before a timeout, or one row
+                # raced. Re-read each key; never blindly overwrite posted data.
+                for row in inserts:
+                    _save_row(row)
+    except DatabaseWriteError:
+        raise
+    except Exception as exc:
+        raise DatabaseWriteError("Bazaga yozib bo'lmadi — yurish to'xtatildi") from exc
 
 
 def get_grants_nearing_deadline(days: int = 5) -> list:
@@ -349,17 +340,18 @@ def get_grants_nearing_deadline(days: int = 5) -> list:
                 .execute())
         return resp.data or []
     except Exception as e:
-        print(f"Muddati yaqin grantlarni olishda xatolik: {e}")
-        return []
+        raise RuntimeError("Muddati yaqin grantlar o'qilmadi") from e
 
 
 def mark_reminder_sent(grant_url: str):
     if not supabase:
-        return
+        raise DatabaseWriteError("Eslatma belgisi uchun baza sozlanmagan")
     try:
-        supabase.table(TABLE).update({"reminder_sent": True}).eq("url", grant_url).execute()
+        response = supabase.table(TABLE).update({"reminder_sent": True}).eq("url", grant_url).execute()
+        if not response.data:
+            raise DatabaseWriteError("Eslatma belgisi saqlangani tasdiqlanmadi")
     except Exception as e:
-        print(f"Eslatma belgisini saqlashda xatolik: {e}")
+        raise DatabaseWriteError("Eslatma belgisi saqlanmadi") from e
 
 
 def stats() -> dict:

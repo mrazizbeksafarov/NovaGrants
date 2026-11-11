@@ -22,6 +22,7 @@ from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode, urljoin
 from bs4 import BeautifulSoup
 
 import http_client
+from opportunity_content import opportunity_summary
 
 TIMEOUT = 15
 MAX_HOPS = 2                 # aggregator -> aggregator -> rasmiy sayt
@@ -54,13 +55,15 @@ AGGREGATORS = {
     "edugrants.uz", "grantss.uz", "stipendiya.uz", "grantlar.info", "oliygoh.uz",
     "grantgo.uz", "joinyouth.uz", "startupbase.uz", "theglobalscholarship.org",
     "globalscholarship.com", "scholarshipscorner.com",
+    "opportunitiespedia.com", "fullyscholarships.com", "youthbreaktheboundaries.com",
+    "greatyop.com",
 }
 
 # Nufuzli rasmiy grant va dasturlar domenlari (darhol ishoniladi)
 KNOWN_OFFICIAL_DOMAINS = {
     "chevening.org", "daad.de", "daad-uzbekistan.org", "turkiyeburslari.gov.tr",
     "stipendiumhungaricum.hu", "fulbrightonline.org", "usembassy.gov",
-    "eyuf.uz", "yoshlar.gov.uz", "it-park.uz", "mininnovation.uz",
+    "eyuf.uz", "el-yurt.uz", "yoshlar.gov.uz", "it-park.uz", "mininnovation.uz", "innovation.gov.uz",
     "edu.uz", "studyinkorea.go.kr", "campuschina.org", "erasmus-plus.ec.europa.eu",
     "youth.europa.eu", "mfa.gov.hu", "mext.go.jp", "visegradfund.org",
     "si.se", "sbfi.admin.ch", "britishcouncil.org", "cambridge.org", "ox.ac.uk", "harvard.edu"
@@ -151,6 +154,9 @@ def _get(url: str, allow_redirects=True):
 
     for attempt in range(MAX_RETRY_429 + 1):
         _throttle(host)
+        with _guard:
+            if time.monotonic() < _host_blocked_until.get(host, 0.0):
+                return None
         r = _session.get(url, timeout=TIMEOUT, allow_redirects=allow_redirects)
         if r is None:
             return None
@@ -159,7 +165,11 @@ def _get(url: str, allow_redirects=True):
             if attempt < MAX_RETRY_429:
                 retry_after = r.headers.get("Retry-After", "")
                 delay = float(retry_after) if retry_after.isdigit() else 5.0 * (attempt + 1)
-                time.sleep(min(delay, 20))
+                if delay > 20:
+                    with _guard:
+                        _host_blocked_until[host] = time.monotonic() + delay
+                    return r
+                time.sleep(delay)
                 continue
             # Uch marta 429 — bu domenni bir muddat tinch qo'yamiz
             with _guard:
@@ -195,6 +205,141 @@ def is_aggregator(url: str) -> bool:
 
 def is_blocked(url: str) -> bool:
     return _host_in(host_of(url), BLOCKED_HOSTS)
+
+
+KNOWN_ACRONYMS = [
+    "mewc", "kgfp", "ams", "daad", "mext", "gks", "csc", "eyuf", "chevening",
+    "fulbright", "erasmus", "schwarzman", "knight-hennessy", "rhodes", "gates",
+    "cern", "desy", "oist", "mitacs", "amgen", "ritsumeikan", "epfl", "eth",
+    "inasp", "ugrad", "susie", "techwomen", "flex", "harriman", "vlir", "nuffic",
+    "yiss", "epp", "epos", "helmut-schmidt", "stipendium-hungaricum", "turkiye-burslari",
+    "turkiyeburslari", "clarendon", "boustany", "weidenfeld-hoffmann", "skoll", "yali",
+    "mandela", "humphrey", "hubert-humphrey", "atlas-corps", "vub", "kaist", "gist"
+]
+
+ENTITY_DOMAINS = {
+    "kaust.edu.sa": "kaust",
+    "ox.ac.uk": "oxford",
+    "oxford.ac.uk": "oxford",
+    "cambridge.org": "cambridge",
+    "cam.ac.uk": "cambridge",
+    "harvard.edu": "harvard",
+    "stanford.edu": "stanford",
+    "mit.edu": "mit",
+    "imperial.ac.uk": "imperial",
+    "daad.de": "daad",
+    "mext.go.jp": "mext",
+    "chevening.org": "chevening",
+    "fulbrightonline.org": "fulbright",
+    "usembassy.gov": "usembassy",
+    "eyuf.uz": "eyuf",
+    "yoshlar.gov.uz": "yoshlar",
+    "it-park.uz": "itpark",
+    "turkiyeburslari.gov.tr": "turkiyeburslari",
+    "stipendiumhungaricum.hu": "stipendiumhungaricum",
+    "erasmus-plus.ec.europa.eu": "erasmus",
+    "europa.eu": "europa",
+    "cern.ch": "cern",
+    "desy.de": "desy",
+    "oist.jp": "oist",
+    "epfl.ch": "epfl",
+    "ethz.ch": "eth",
+    "kaist.ac.kr": "kaist",
+    "gist.ac.kr": "gist",
+}
+
+SINGLE_PROGRAM_ORGS = {
+    "turkiyeburslari", "chevening", "fulbright", "mext", "eyuf",
+    "stipendiumhungaricum", "schwarzman", "rhodes", "gatescambridge"
+}
+
+
+def root_domain(host: str) -> str:
+    """Subdomenlarni olib tashlab, tashkilotning asosiy domenni qaytaradi (masalan, cemse.kaust.edu.sa -> kaust.edu.sa)."""
+    if not host:
+        return ""
+    host = host.lower().strip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    parts = host.split(".")
+    if len(parts) <= 2:
+        return host
+    two_level_tlds = {
+        "edu.sa", "ac.uk", "gov.uz", "co.uk", "go.kr", "ac.jp", "edu.au",
+        "gov.uk", "gov.tr", "gov.kz", "gov.ru", "or.kr", "ne.jp", "com.uz",
+        "org.uk", "ac.nz", "edu.sg", "europa.eu", "usembassy.gov", "ec.europa.eu",
+        "ac.kr", "edu.cn", "gov.cn", "org.za", "edu.tr", "gov.in"
+    }
+    if len(parts) >= 3 and ".".join(parts[-2:]) in two_level_tlds:
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:])
+
+
+def program_fingerprint(title: str, url: str = "") -> str:
+    """Ko'p tilli va turli agregatorlar sarlavhalarini yagona dastur kodiga birlashtiradi.
+    
+    Masalan:
+      'KAUST Microelectronics Winter Camp (MEWC) 2027'
+      'Saudiya Arabistonida MEWC qishki amaliyot dasturi'
+    ikkalasi ham -> 'kaust:mewc' ga tushadi.
+    """
+    t_str = str(title or "")
+    u_str = str(url or "")
+    combined = f"{t_str} {u_str}".lower()
+    host = host_of(url) if url else ""
+    r_dom = root_domain(host) if host else ""
+    org = ENTITY_DOMAINS.get(r_dom, "")
+    if not org:
+        for brand in ("kaust", "cambridge", "oxford", "harvard", "stanford", "mit",
+                      "imperial", "daad", "mext", "chevening", "fulbright", "erasmus",
+                      "turkiyeburslari", "stipendiumhungaricum", "eyuf", "itpark", "unicef",
+                      "cern", "desy", "oist", "mitacs", "amgen", "kaist", "gist"):
+            if _mentions_brand(brand, combined):
+                org = brand
+                break
+    acronym = ""
+    for ac in KNOWN_ACRONYMS:
+        if re.search(r"(?<![a-z])" + re.escape(ac) + r"(?![a-z])", combined):
+            acronym = ac.replace("-", "")
+            break
+    if org and acronym:
+        return org if org == acronym else f"{org}:{acronym}"
+    if acronym:
+        return acronym
+    if org in SINGLE_PROGRAM_ORGS:
+        return org
+    if org:
+        words = [w for w in re.findall(r"[a-z0-9]{4,}", t_str.lower())
+                 if w not in _STOPWORDS and w != org]
+        if words:
+            return f"{org}:{'-'.join(sorted(words)[:3])}"
+        return org
+    return ""
+
+
+def canonical_url_key(url: str, title: str = "") -> str:
+    """Asosiy tashkilot va dastur yo'lini birlashtiruvchi kanonik kalit."""
+    if not url:
+        return ""
+    try:
+        p = urlparse(clean_url(url) or url)
+        r_domain = root_domain(host_of(url))
+        path = (p.path or "/").strip("/").lower()
+        prog_code = program_fingerprint(title, url)
+        if prog_code:
+            return f"{r_domain}:{prog_code}"
+        slugs = [s for s in path.split("/") if s and len(s) > 3 and s not in (
+            "apply", "register", "registration", "how-to-apply", "admissions",
+            "admission", "portal", "en", "uz", "ru", "tr", "fees-funding", "scholarships",
+            "internship-opportunities", "opportunities", "index", "default"
+        )]
+        if slugs:
+            clean_slug = re.sub(r"[^a-z0-9]+", "-", slugs[-1]).strip("-")
+            if clean_slug:
+                return f"{r_domain}:{clean_slug}"
+        return f"{r_domain}:{path}" if path else r_domain
+    except Exception:
+        return url_key(url)
 
 
 def clean_url(url: str) -> str:
@@ -268,7 +413,7 @@ def title_fingerprint(title: str) -> str:
     tokens = {w for w in t.split() if len(w) > 2 and w not in _STOPWORDS}
     if len(tokens) < 2:
         return ""                                # juda umumiy sarlavha — izga ishonmaymiz
-    return hashlib.sha1(" ".join(sorted(tokens)[:12]).encode("utf-8")).hexdigest()[:20]
+    return hashlib.sha1(" ".join(sorted(tokens)[:12]).encode("utf-8"), usedforsecurity=False).hexdigest()[:20]
 
 
 def follow_redirects(url: str) -> str:
@@ -372,7 +517,7 @@ def _collect_candidates(root, article_url: str, source_host: str) -> tuple:
     return external, internal_redirects
 
 
-def find_original_link(article_url: str) -> tuple:
+def find_original_link(article_url: str, title: str = "") -> tuple:
     """Aggregator maqolasidan grantning rasmiy havolasini topadi.
 
     Qaytaradi: (havola, anchor_bahosi). Topilmasa ("", 0).
@@ -412,13 +557,15 @@ def find_original_link(article_url: str) -> tuple:
         # Bunday holatda past bahoga ham ishonamiz.
         threshold = 4 if len(pool) == 1 else 10
 
-        for score, href in pool[:3]:
+        for score, href in pool[:5]:
             if score < threshold:                # ishonch past — reklama bo'lishi mumkin
                 break
             final = follow_redirects(href)
             if is_blocked(final):
                 continue
             if host_of(final) == source_host:
+                continue
+            if title and not is_aggregator(final) and not link_matches_title(title, final, score)[0]:
                 continue
             return clean_url(final), score
 
@@ -454,6 +601,13 @@ ENTITY_BRANDS = [
 ]
 
 
+def _mentions_brand(brand: str, text: str) -> bool:
+    # MIT must not match subMIT.com; WHO must not match "whole".
+    if len(brand) <= 3:
+        return bool(re.search(rf"(?<![a-z0-9]){re.escape(brand)}(?![a-z0-9])", text))
+    return brand in text
+
+
 def link_matches_title(title: str, url: str, anchor_score: int = 0) -> tuple:
     """Havola sarlavhaga mos keladimi? Qaytaradi: (mos_keladi, sabab).
 
@@ -483,9 +637,9 @@ def link_matches_title(title: str, url: str, anchor_score: int = 0) -> tuple:
 
     # Brend/tashkilot nomuvofiqligi tekshiruvi (begona universitet havolasini rad etadi)
     for b in ENTITY_BRANDS:
-        if b in blob and b not in low_title:
-            other_brands = [ob for ob in ENTITY_BRANDS if ob in low_title]
-            if other_brands or len(tokens) >= 2:
+        if _mentions_brand(b, blob) and not _mentions_brand(b, low_title):
+            other_brands = [ob for ob in ENTITY_BRANDS if _mentions_brand(ob, low_title)]
+            if other_brands or (len(tokens) >= 2 and anchor_score < STRONG_ANCHOR_SCORE):
                 return False, f"brend nomuvofiqligi: URL da '{b}', lekin sarlavhada yo'q"
 
     token_hit = any(t in blob for t in tokens)
@@ -511,28 +665,48 @@ def link_matches_title(title: str, url: str, anchor_score: int = 0) -> tuple:
 def resolve_grant(grant: dict) -> dict:
     """Bitta yozuv uchun asl havolani aniqlaydi.
 
-    Qo'shadi: `url` (asl havola), `source_url`, `url_key`, `fingerprint`.
+    Qo'shadi: `url` (asl havola), `source_url`, `url_key`, `fingerprint`, `canonical_url_key`, `program_fingerprint`.
     Asl havola topilmasa `url` bo'sh qoladi — chaqiruvchi uni tashlab yuborishi kerak.
     """
     source_url = clean_url(grant.get("url", ""))
     grant["source_url"] = source_url
-    grant["fingerprint"] = title_fingerprint(grant.get("title", ""))
+    title = grant.get("title", "")
+    grant["fingerprint"] = title_fingerprint(title)
     grant["url"] = ""
     grant["url_key"] = ""
-    title = grant.get("title", "")
+    grant["canonical_url_key"] = ""
+    grant["program_fingerprint"] = ""
 
     def accept(final_url, anchor_score=0):
-        """Havolani qabul qilishdan oldin sarlavhaga mosligini tekshiradi."""
+        """Havolani qabul qilishdan oldin sarlavhaga mosligini va agregator emasligini tekshiradi."""
+        if not final_url or is_aggregator(final_url) or is_blocked(final_url):
+            return False
         ok, reason = link_matches_title(title, final_url, anchor_score)
         if not ok:
             print(f"    ! havola rad etildi ({reason}): {final_url[:70]}")
             return False
-        grant["url"] = final_url
-        grant["url_key"] = url_key(final_url)
+        clean = clean_url(final_url) or final_url
+        if is_aggregator(clean) or is_blocked(clean):
+            return False
+        grant["url"] = clean
+        grant["url_key"] = url_key(clean)
+        grant["canonical_url_key"] = canonical_url_key(clean, title)
+        grant["program_fingerprint"] = program_fingerprint(title, clean)
         return True
 
     if not source_url:
         return grant
+
+    # Full RSS entries already contain the article's application links. Reuse
+    # the same scoring, redirect and title checks without fetching the article.
+    if grant.get("feed_html"):
+        soup = BeautifulSoup(grant["feed_html"], "html.parser")
+        candidates, _ = _collect_candidates(soup, source_url, host_of(source_url))
+        for score, href in sorted(candidates, reverse=True)[:5]:
+            related_path = GOOD_PATH.search(urlparse(href).path or "") and link_matches_title(title, href, 0)[0]
+            if (score >= STRONG_ANCHOR_SCORE or (score >= 8 and related_path)) and not is_aggregator(href):
+                if accept(follow_redirects(href), anchor_score=score):
+                    return grant
 
     from_telegram = str(grant.get("source_id", "")).startswith("tg:") or \
         host_of(source_url) in ("t.me", "telegram.me")
@@ -555,15 +729,32 @@ def resolve_grant(grant: dict) -> dict:
         final = follow_redirects(start) if from_telegram else start
         if is_blocked(final) or host_of(final) in ("t.me", "telegram.me"):
             return grant
-        # Telegram postidagi tashqi havolani muallif o'zi qo'ygan — kuchli dalil
-        accept(clean_url(final) or start,
-               anchor_score=STRONG_ANCHOR_SCORE if from_telegram else 0)
-        return grant
+        if is_aggregator(final):
+            start = final                         # yo'naltirish agregatorga olib bordi — ichini qazamiz
+        else:
+            accept(clean_url(final) or start,
+                   anchor_score=STRONG_ANCHOR_SCORE if from_telegram else 0)
+            if grant.get("url"):
+                if grant.get("fetch_details"):
+                    response = _get(grant["url"])
+                    if response is None or response.status_code != 200:
+                        grant["url"] = ""  # unavailable details are retryable
+                        return grant
+                    if not accept(getattr(response, "url", "") or grant["url"]):
+                        grant["url"] = ""
+                        return grant
+                    page = BeautifulSoup(response.text, "html.parser")
+                    root = page.select_one(grant.get("detail_selector", "main, article"))
+                    if root is None:
+                        grant["url"] = ""
+                        return grant
+                    grant["summary"] = opportunity_summary(str(root))
+                return grant
 
     # Aggregator — ichidan qazib olamiz (kerak bo'lsa bir necha bosqichda)
     current = start
     for _ in range(MAX_HOPS):
-        found, score = find_original_link(current)
+        found, score = find_original_link(current, title=title)
         if not found:
             break
         if not is_aggregator(found):
@@ -575,7 +766,7 @@ def resolve_grant(grant: dict) -> dict:
     if not grant.get("url"):
         try:
             from ai_agent import resolve_official_url_with_ai
-            resp = _session.get(start, timeout=TIMEOUT)
+            resp = _get(start)
             if resp and resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, "html.parser")
                 candidates = []
@@ -586,10 +777,11 @@ def resolve_grant(grant: dict) -> dict:
                             candidates.append(h)
                 if candidates:
                     ai_url = resolve_official_url_with_ai(title, grant.get("summary", ""), candidates)
-                    if ai_url and not is_aggregator(ai_url) and not is_blocked(ai_url):
-                        accept(clean_url(ai_url), anchor_score=STRONG_ANCHOR_SCORE)
-        except Exception:
-            pass
+                    if ai_url and ai_url in candidates:
+                        # An allowed candidate may redirect to an aggregator or unrelated site.
+                        accept(clean_url(follow_redirects(ai_url)), anchor_score=STRONG_ANCHOR_SCORE)
+        except Exception as exc:
+            print(f"    ! zaxira havola qidirish xatosi: {type(exc).__name__}")
 
     return grant
 

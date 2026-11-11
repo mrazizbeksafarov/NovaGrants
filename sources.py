@@ -22,13 +22,10 @@ va `?paged=3` yana 10 tadan NOYOB yozuv qaytaradi. Ya'ni bitta ishonchli
 manbadan 10 emas, 30 ta yozuv olish mumkin. Bu — yangi manba qidirishdan
 ko'ra arzon va aniqroq yo'l, chunki manbalar allaqachon tekshirilgan.
 
-── NEGA RASMIY MANBALAR KAM ──────────────────────────────────────────────
-40+ rasmiy sayt tekshirildi (chevening.org, daad.de, britishcouncil.org,
-turkiyeburslari.gov.tr, stipendiumhungaricum.hu, euraxess, salto-youth,
-unjobs, jobs.ac.uk, mastersportal va h.k.) — 2026-yilda ularning deyarli
-hech birida ishlaydigan RSS yo'q (404, JS bilan yuklanadigan sahifa yoki
-bot himoyasi). Ishlayotgan kam sonlisi DISABLED da sababi bilan yozilgan.
-Shu sabab qamrov aggregatorlar + sahifalash orqali kengaytirildi.
+2026-11-11: xalqaro manbalar qayta tekshirildi; ayrim avval yopiq feed'lar
+yana ishlayapti. Feed'ning ishlashi uning barcha e'lonlari O'zbekiston uchun
+ochiq ekanini anglatmaydi. Har bir dastur fuqarolik/yashash talablari orqali
+alohida saralanadi. Tekshiruv dalillari: docs/SOURCES_2026-11-11.md.
 """
 
 SOURCES = [
@@ -71,19 +68,19 @@ SOURCES = [
      "url": "https://oyaop.com/feed/", "pages": 3},
 
     {"id": "oppscircle", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://opportunitiescircle.com/feed/", "pages": 3},
+     "url": "https://opportunitiescircle.com/feed/", "pages": 3, "enabled": False},
 
     {"id": "scholarshiproar", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://scholarshiproar.com/feed/", "pages": 3},
+     "url": "https://scholarshiproar.com/feed/", "pages": 3, "enabled": False},
 
     {"id": "profellow", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
-     "url": "https://www.profellow.com/feed/", "pages": 2},
+     "url": "https://www.profellow.com/feed/", "pages": 2, "enabled": False},
 
     {"id": "oppscorners", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
      "url": "https://opportunitiescorners.com/feed/", "pages": 2},
 
     {"id": "mladiinfo", "type": "rss", "kind": "aggregator", "region": "EU", "topic": "fellowship",
-     "url": "https://www.mladiinfo.eu/feed/", "pages": 2},
+     "url": "https://www.mladiinfo.eu/feed/", "pages": 2, "enabled": False},
 
     # O'zbekiston fuqarolari uchun mo'ljallanmagan (Afrika davlatlari uchun) — o'chiq
     {"id": "opps4africans", "type": "rss", "kind": "aggregator", "region": "Africa", "topic": "scholarship",
@@ -93,7 +90,29 @@ SOURCES = [
      "url": "https://grantlar.uz/feed/", "pages": 2},
 
     {"id": "scholarshipunion", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
-     "url": "https://scholarshipunion.com/feed/", "pages": 1, "enabled": False},
+     "url": "https://scholarshipunion.com/feed/", "pages": 2, "checked_at": "2026-11-11"},
+
+    # World-wide discovery: each feed includes some country-restricted calls,
+    # so eligibility evidence must be retained, never inferred from source name.
+    {"id": "scholarships-corner", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
+     "url": "https://scholarshipscorner.website/feed/", "pages": 2, "checked_at": "2026-11-11",
+     "coverage": ["Europe", "North America", "Asia", "Middle East", "Oceania"]},
+
+    {"id": "scholars4dev", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
+     "url": "https://www.scholars4dev.com/feed/", "pages": 2, "checked_at": "2026-11-11",
+     "coverage": ["Europe", "North America", "Asia", "Oceania"]},
+
+    {"id": "opportunitiespedia", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
+     "url": "https://opportunitiespedia.com/feed/", "pages": 2, "checked_at": "2026-11-11",
+     "coverage": ["Europe", "North America", "Asia", "Middle East"]},
+
+    {"id": "fullyscholarships", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "scholarship",
+     "url": "https://fullyscholarships.com/feed/", "pages": 2, "checked_at": "2026-11-11",
+     "coverage": ["Europe", "North America", "Asia", "Middle East"]},
+
+    {"id": "youth-break-boundaries", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
+     "url": "https://youthbreaktheboundaries.com/feed/", "pages": 2, "checked_at": "2026-11-11",
+     "coverage": ["Asia", "Europe", "North America"]},
 
     {"id": "opps4youth", "type": "rss", "kind": "aggregator", "region": "Global", "topic": "fellowship",
      "url": "https://opportunitiesforyouth.org/feed/", "enabled": False},
@@ -107,12 +126,24 @@ SOURCES = [
     {"id": "youth-europa", "type": "rss", "kind": "official", "region": "EU", "topic": "grant",
      "url": "https://youth.europa.eu/rss.xml"},
 
+    # One feed returns all study levels, even from /masters-scholarships/.
+    # Records retain old creation dates despite updated intakes: fetch the live
+    # detail page and check eligibility/deadline instead of publication age.
+    {"id": "sussex-funding", "type": "rss", "kind": "official", "region": "UK", "topic": "scholarship",
+     "url": "https://www.sussex.ac.uk/study/fees-funding/masters-scholarships/rss/?all",
+     "max_age_days": None, "fetch_details": True, "detail_selector": "#main",
+     "checked_at": "2026-11-11"},
+
+    # Correct news feed (the site's root /feed/ contains old placeholder posts).
+    {"id": "stipendium-news", "type": "rss", "kind": "official", "region": "Hungary", "topic": "scholarship",
+     "url": "https://stipendiumhungaricum.hu/news/feed/", "checked_at": "2026-11-11"},
+
     # ══════════════════════════════════════════════════════════════════════
     # TELEGRAM — O'zbekiston (Rasmiy va Ishonchli Manbalar)
     # ══════════════════════════════════════════════════════════════════════
     # "El-yurt umidi" jamg'armasi rasmiy kanali
     {"id": "tg:eyuf", "type": "telegram", "kind": "official", "region": "UZ", "topic": "scholarship",
-     "channel": "eyuf_uz"},
+     "channel": "elyurtumidifoundation", "checked_at": "2026-11-11"},
 
     # Yoshlar ishlari agentligi rasmiy kanali
     {"id": "tg:yoshlar", "type": "telegram", "kind": "official", "region": "UZ", "topic": "grant",
@@ -124,7 +155,7 @@ SOURCES = [
 
     # Innovatsion rivojlanish agentligi
     {"id": "tg:mininnovation", "type": "telegram", "kind": "official", "region": "UZ", "topic": "grant",
-     "channel": "mininnovation"},
+     "channel": "innovatsion_rivojlanish", "checked_at": "2026-11-11"},
 
     # IT Park Uzbekistan tanlovlari va startap grantlari
     {"id": "tg:itpark", "type": "telegram", "kind": "official", "region": "UZ", "topic": "startup",
@@ -174,6 +205,13 @@ SOURCES = [
 # O'CHIRILGAN MANBALAR — nima uchun olib tashlanganini eslab qolish uchun
 # ══════════════════════════════════════════════════════════════════════════
 DISABLED = {
+    "tg:eyuf_uz": "2026-11-11: faqat 3 ta eski post; hozirgi rasmiy kanal @elyurtumidifoundation",
+    "tg:mininnovation-old": "2026-11-11: faqat 15 ta eski post; @innovatsion_rivojlanish bilan almashtirildi",
+    "mladiinfo": "2026-11-11: ulanish timeout; 11-noyabr Actions logida faqat 24 ta eskirgan yozuv",
+    "oppscircle": "2026-11-11: HTTP 200, lekin 0 ta RSS yozuv",
+    "scholarshiproar": "2026-11-11: HTTP 200, lekin feed bo'sh; bosh sahifa feed o'rnida olinmaydi",
+    "profellow": "2026-11-11: HTTP 200, lekin feed bo'sh",
+    "stipendiumhungaricum.hu/feed/": "2026-11-11: 2 ta eski placeholder; /news/feed/ ishlatiladi",
     # ── 2026-08-06 auditida olib tashlanganlar ────────────────────────────
     # O'LIK TELEGRAM KANALLARI. Scraper sanaga qaramagani uchun bular 5 yillik
     # e'lonlarni "yangi imkoniyat" sifatida quvurga tiqib turgan edi.
@@ -185,7 +223,6 @@ DISABLED = {
     "fellowshipbard.com/feed":      "ConnectTimeout — sayt javob bermaydi",
     "opportunitiesforyouth.org":    "HTTP 429 — feed ham, maqolalari ham. "
                                     "Qazish bosqichida har safar bloklanadi",
-    "scholarshipscorner.website":   "Ulanmaydi — tg:scholarshipscorner o'z saytiga havola qiladi",
     "scholarshipregion.com/feed":   "HTTP 202 (Cloudflare) — Telegram varianti ishlatiladi",
 
     # MAVZU: NGO/tashkilot grantlari. AI ga "institutsional grantlarni tashla"
@@ -204,7 +241,6 @@ DISABLED = {
     "ec.europa.eu funding-tenders": "API kalit talab qiladi (403/500)",
 
     # Feed o'lgan / bot himoyasi (2026-08-04 holatiga)
-    "scholars4dev.com/feed":        "RSS bo'sh qaytadi (0 ta yozuv)",
     "youthop.com/feed":             "HTTP 404 — feed olib tashlangan",
     "scholarship-positions.com":    "Cloudflare himoyasi, HTML stub qaytaradi",
     "armacad.info/rss":             "HTTP 404",
