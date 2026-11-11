@@ -20,8 +20,11 @@ from filters import (
 )
 from link_resolver import (
     url_key, clean_url, title_fingerprint, is_aggregator, is_blocked,
-    link_matches_title, STRONG_ANCHOR_SCORE,
+    link_matches_title, STRONG_ANCHOR_SCORE, root_domain,
+    program_fingerprint, canonical_url_key, resolve_grant,
 )
+from database import make_semantic_slug
+from main import deduplicate
 from post_builder import build_post, usable_cards, _esc_attr, _deadline_label
 from telegram_bot import (
     split_message, utf16_len, sanitize_html, strip_tags_keep_links, _open_tag_stack,
@@ -232,6 +235,9 @@ def test_rich_va_html_bir_xil_havolani_beradi():
                     walk(b[key])
             for item in b.get("items", []) or []:
                 walk(item.get("blocks", []))
+            for button in b.get("buttons", []):
+                if button.get("url"):
+                    rich_urls.append(button["url"])
 
     walk(blocks)
     assert len(rich_urls) == 2
@@ -285,3 +291,98 @@ def test_zaxira_yol_havolani_yoqotmaydi():
 def test_utf16_emoji_ikki_birlik():
     assert utf16_len("ab") == 2
     assert utf16_len("🎓") == 2
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Takrorlanishga qarshi ko'p qatlamli (multi-tier) kanonik testlar
+# ══════════════════════════════════════════════════════════════════════════
+def test_root_domain_subdomainlarni_tozalaydi():
+    assert root_domain("cemse.kaust.edu.sa") == "kaust.edu.sa"
+    assert root_domain("apply.kaust.edu.sa") == "kaust.edu.sa"
+    assert root_domain("admissions.ox.ac.uk") == "ox.ac.uk"
+    assert root_domain("www.daad.de") == "daad.de"
+    assert root_domain("sub.eyuf.uz") == "eyuf.uz"
+
+
+def test_program_fingerprint_akronim_va_brendlarni_taniydi():
+    # KAUST MEWC
+    assert program_fingerprint("KAUST Microelectronics Winter Camp 2027", "https://kaust.edu.sa/mewc") == "kaust:mewc"
+    assert program_fingerprint("Saudiya Arabistonida MEWC qishki amaliyot", "https://apply.kaust.edu.sa/register?id=mewc2027") == "kaust:mewc"
+    # Turkiye Burslari
+    assert program_fingerprint("Turkiye Burslari Scholarship 2027", "https://turkiyeburslari.gov.tr/apply") == "turkiyeburslari"
+    assert program_fingerprint("Turkiya hukumati stipendiyasi 2027", "https://turkiyeburslari.gov.tr/tr") == "turkiyeburslari"
+    # Chevening
+    assert program_fingerprint("Chevening Scholarships 2027", "https://chevening.org/apply") == "chevening"
+    assert program_fingerprint("Buyuk Britaniyada Chevening dasturi", "https://chevening.org") == "chevening"
+
+
+def test_canonical_url_key_kaust_mewc_birlashtiradi():
+    url1 = "https://cemse.kaust.edu.sa/internship-opportunities/microelectronics-winter-camp-mewc"
+    url2 = "https://apply.kaust.edu.sa/register/?id=mewc2027"
+    url3 = "https://kaust.edu.sa/en/study/internships/mewc"
+
+    t1 = "KAUST MEWC Winter Camp 2027 in Saudi Arabia (Fully Funded)"
+    t2 = "Saudiya Arabistonida KAUST MEWC qishki amaliyot dasturi"
+
+    k1 = canonical_url_key(url1, t1)
+    k2 = canonical_url_key(url2, t2)
+    k3 = canonical_url_key(url3, t1)
+
+    assert k1 == k2 == k3 == "kaust.edu.sa:kaust:mewc"
+
+
+def test_make_semantic_slug_invariance():
+    url1 = "https://cemse.kaust.edu.sa/internship-opportunities/microelectronics-winter-camp-mewc"
+    url2 = "https://apply.kaust.edu.sa/register/?id=dbdcad09"
+    t1 = "KAUST MEWC Winter Camp 2027 in Saudi Arabia (Fully Funded)"
+    t2 = "KAUST MEWC Winter Camp — Saudiya Arabistonida qishki amaliyot"
+
+    s1 = make_semantic_slug(t1, "cemse.kaust.edu.sa", "2026-11-01", url1)
+    s2 = make_semantic_slug(t2, "apply.kaust.edu.sa", None, url2)
+
+    assert s1 == s2 == "kaust.edu.sa:kaust:mewc"
+
+
+def test_deduplicate_batch_ichidagi_va_kanonik_takrorlarni_tashlaydi():
+    items = [
+        {
+            "title": "KAUST MEWC Winter Camp 2027 in Saudi Arabia (Fully Funded)",
+            "url": "https://cemse.kaust.edu.sa/internship-opportunities/microelectronics-winter-camp-mewc",
+            "url_key": "cemse.kaust.edu.sa/internship-opportunities/microelectronics-winter-camp-mewc",
+            "source_key": "opportunitiescorners.com/kaust-mewc",
+            "source_url": "https://opportunitiescorners.com/kaust-mewc",
+            "fingerprint": "abc1",
+        },
+        {
+            "title": "KAUST MEWC Winter Camp — Saudiya Arabistonida qishki amaliyot",
+            "url": "https://apply.kaust.edu.sa/register/?id=dbdcad09",
+            "url_key": "apply.kaust.edu.sa/register?id=dbdcad09",
+            "source_key": "grantgo.uz/grant/kaust-mewc",
+            "source_url": "https://grantgo.uz/grant/kaust-mewc",
+            "fingerprint": "xyz2",
+        },
+        {
+            "title": "DAAD EPOS Scholarship 2027",
+            "url": "https://daad.de/epos",
+            "url_key": "daad.de/epos",
+            "source_key": "opportunitydesk.org/daad-epos",
+            "source_url": "https://opportunitydesk.org/daad-epos",
+            "fingerprint": "def3",
+        },
+    ]
+
+    filtered = deduplicate(items)
+    # KAUST MEWC ikkinchi marta takrorlanmasligi kerak, faqat 1 tasi va DAAD o'tishi kerak
+    assert len(filtered) == 2
+    assert filtered[0]["url"] == "https://cemse.kaust.edu.sa/internship-opportunities/microelectronics-winter-camp-mewc"
+    assert filtered[1]["url"] == "https://daad.de/epos"
+
+
+def test_aggregator_havolasi_post_bolmaydi():
+    bad_grant = {
+        "title": "KAUST MEWC Winter Camp",
+        "url": "https://opportunitydesk.org/2026/09/kaust-mewc/",
+        "source_url": "https://opportunitydesk.org/2026/09/kaust-mewc/",
+    }
+    filtered = deduplicate([bad_grant])
+    assert len(filtered) == 0
