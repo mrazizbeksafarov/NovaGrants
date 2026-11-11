@@ -56,5 +56,33 @@ def test_groq_is_used_after_gemini_exhaustion(monkeypatch):
 
 def test_groq_http_failure_does_not_produce_raw_fallback(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test")
-    monkeypatch.setattr(groq_fallback.requests, "post", lambda *args, **kwargs: SimpleNamespace(status_code=429))
+    monkeypatch.setattr(groq_fallback, "RETRY_WAIT_SECONDS", 0)
+    monkeypatch.setattr(groq_fallback.requests, "post", lambda *args, **kwargs: SimpleNamespace(
+        status_code=429, json=lambda: {"error": {"code": "rate_limit_exceeded"}}))
     assert groq_fallback.request_content("Editor", "Prompt", {}) is None
+
+
+def test_groq_retries_once_after_schema_validation_failure(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setattr(groq_fallback, "RETRY_WAIT_SECONDS", 0)
+    good = {"choices": [{"message": {"content": json.dumps({"headline": "New", "cards": []})}}], "usage": {}}
+    replies = [SimpleNamespace(status_code=400, json=lambda: {"error": {"code": "json_validate_failed"}}),
+               SimpleNamespace(status_code=200, json=lambda: good)]
+    monkeypatch.setattr(groq_fallback.requests, "post", lambda *args, **kwargs: replies.pop(0))
+    assert groq_fallback.request_content("Editor", "Prompt", {})["data"]["headline"] == "New"
+    assert replies == []
+
+
+def test_groq_does_not_retry_authentication_failure(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+    calls = []
+    def post(*args, **kwargs):
+        calls.append(1)
+        return SimpleNamespace(status_code=401, json=lambda: {"error": {"code": "invalid_api_key"}})
+    monkeypatch.setattr(groq_fallback.requests, "post", post)
+    assert groq_fallback.request_content("Editor", "Prompt", {}) is None
+    assert len(calls) == 1
+
+
+def test_primary_gemini_model_is_the_one_that_answers_in_time():
+    assert ai_agent.MODEL_CHAIN[0] == "gemini-3.6-flash"
