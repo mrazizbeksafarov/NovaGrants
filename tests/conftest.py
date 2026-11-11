@@ -32,3 +32,10 @@ def no_network(monkeypatch):
         monkeypatch.setattr(http_client._curl.Session, "request", blocked)
     yield
     assert not attempts, "Offline test tried a network call that application error handling swallowed"
+
+
+@pytest.fixture(autouse=True)
+def no_groq_pacing(monkeypatch):
+    import groq_fallback
+    monkeypatch.setattr(groq_fallback, "MIN_EDITORIAL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(groq_fallback, "_last_editorial_call", None)

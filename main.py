@@ -353,21 +353,32 @@ def publish(items):
             f"qolgan {len(items) - MAX_POST_PER_RUN} tasi keyingi yurishga qoladi.")
         items = items[:MAX_POST_PER_RUN]
 
-    posted = 0
     tokens = 0
+    selected = []   # (card, grant): AI tanlagan, hali post qilinmagan
+    rejected = []   # AI rad etgan — "skipped", ertaga qayta ishlanmaydi
+    failure = None
 
+    # 1) AI barcha to'plamlarni ko'rib chiqadi. Post hali yuborilmaydi: aks holda
+    # har to'plam (8 ta) o'z muqovasi bilan alohida, ko'pincha 1 grantli post bo'lardi.
     for start in range(0, len(items), BATCH_SIZE):
         batch = items[start:start + BATCH_SIZE]
         log(f"── {start // BATCH_SIZE + 1}-to'plam: {len(batch)} ta imkoniyat AI ga yuborilmoqda...")
 
         content = generate_post_content(batch)
 
+        # Bitta to'plamdagi nosozlik qolganlarini to'xtatmaydi: bu to'plam bazaga
+        # yozilmay keyingi yurishga qoladi, xato esa oxirida adminga bildiriladi.
         if content is None:
-            raise RuntimeError("AI javobi olinmadi — grantlar keyingi yurishga qoldirildi")
+            log("   AI javobi olinmadi — bu to'plam keyingi yurishga qoldi.")
+            failure = RuntimeError("AI javobi olinmadi — grantlar keyingi yurishga qoldirildi")
+            continue
 
+        retry_later = set(content.get("unverified_urls") or ())
         if not content.get("cards"):
-            log("   AI bu to'plamdan mos imkoniyat topmadi.")
-            save_grants_batch([{"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"} for g in batch])
+            log("   AI bu to'plamdan tasdiqlangan mos imkoniyat topmadi"
+                + (f" ({len(retry_later)} tasi keyingi yurishda qayta ko'riladi)." if retry_later else "."))
+            rejected += [{"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"}
+                         for g in batch if g["url"] not in retry_later]
             continue
 
         usage = content.get("usage") or {}
@@ -377,7 +388,28 @@ def publish(items):
 
         cards = usable_cards(content["cards"])
         if not cards:
-            raise RuntimeError("AI kartochkalari yaroqsiz — grantlar saqlanmagan holda qoldirildi")
+            log("   AI kartochkalari yaroqsiz — bu to'plam keyingi yurishga qoldi.")
+            failure = RuntimeError("AI kartochkalari yaroqsiz — grantlar saqlanmagan holda qoldirildi")
+            continue
+
+        chosen = {c["_source"]["url"]: c for c in cards if c.get("_source")}
+        for g in batch:
+            if g["url"] in chosen:
+                selected.append((chosen[g["url"]], g))
+            elif g["url"] not in retry_later:
+                rejected.append({"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"})
+        later = sum(g["url"] in retry_later for g in batch)
+        log(f"   {len(chosen)} ta tanlandi, {len(batch) - len(chosen) - later} tasi rad etildi"
+            + (f", {later} tasi keyingi yurishda qayta ko'riladi." if later else "."))
+
+    if rejected:
+        save_grants_batch(rejected)
+
+    # 2) Tanlanganlar bitta digestga yig'iladi (BATCH_SIZE tadan oshsa — bir nechta post).
+    posted = 0
+    for start in range(0, len(selected), BATCH_SIZE):
+        chunk = selected[start:start + BATCH_SIZE]
+        cards = [card for card, _ in chunk]
         # A mixed digest can contain partial awards. Do not let an AI headline
         # claim that every opportunity is fully funded or has one eligibility.
         blocks, html = build_post(f"{len(cards)} ta yangi xalqaro imkoniyat", cards)
@@ -385,30 +417,22 @@ def publish(items):
         if not publish_post(blocks, html):
             raise RuntimeError("Telegram xabari to'liq yuborilmadi — Actions logini tekshiring")
 
-        # AI tanlagan imkoniyatlar — "posted", tanlanmaganlari — "skipped".
-        # Ikkalasi ham bazaga tushadi, shunda ertaga qayta ishlanmaydi.
-        chosen = {c["_source"]["url"]: c for c in cards if c.get("_source")}
-        batch_saves = []
-
-        for g in batch:
-            card = chosen.get(g["url"])
-            if card:
-                # AI bergan sanani tekshiramiz — o'tib ketgan bo'lsa o'zimiznikiga qaytamiz
-                deadline = (validate_deadline_iso(card.get("deadline_iso"))
-                            or g.get("deadline_iso"))
-                batch_saves.append({"grant": g, "deadline_iso": deadline, "status": "posted"})
-                for alias in g.get("_aliases", []):
-                    batch_saves.append({"grant": alias, "status": "duplicate", "key": alias.get("source_key")})
-                posted += 1
-            else:
-                batch_saves.append({"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"})
-
-        save_grants_batch(batch_saves)
+        saves = []
+        for card, g in chunk:
+            # AI bergan sanani tekshiramiz — o'tib ketgan bo'lsa o'zimiznikiga qaytamiz
+            deadline = validate_deadline_iso(card.get("deadline_iso")) or g.get("deadline_iso")
+            saves.append({"grant": g, "deadline_iso": deadline, "status": "posted"})
+            for alias in g.get("_aliases", []):
+                saves.append({"grant": alias, "status": "duplicate", "key": alias.get("source_key")})
+        save_grants_batch(saves)
+        posted += len(chunk)
         action = "tayyorlandi (yuborilmadi)" if DRY_RUN else "post qilindi"
-        log(f"   ✅ {len(chosen)} ta {action}, {len(batch) - len(chosen)} tasi rad etildi.")
+        log(f"   ✅ {len(chunk)} ta imkoniyat bitta postda {action}.")
 
     if tokens:
         log(f"── Jami sarflangan token: {tokens}")
+    if failure:
+        raise failure
     return posted
 
 

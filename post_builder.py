@@ -119,8 +119,9 @@ def build_rich_blocks(headline: str, cards: list) -> list:
         for i, card in enumerate(cards, 1):
             rows.append([cell({"type": "anchor_link", "text": _clean(card.get("name"), 65), "anchor_name": f"grant-{i}"}),
                          cell(_deadline_label(card.get("deadline_iso")) or "Ko'rsatilmagan")])
-        blocks.append({"type": "details", "summary": f"Dasturlar ro'yxati · {len(cards)}",
-                       "blocks": [{"type": "table", "cells": rows, "is_compact": True, "is_striped": True}]})
+        # Ro'yxat qisqa va post ichidagi navigatsiya — yig'ilmaydi, doim ko'rinadi.
+        blocks.append({"type": "table", "cells": rows, "is_compact": True, "is_striped": True,
+                       "caption": f"Dasturlar ro'yxati · {len(cards)}"})
 
     for i, card in enumerate(cards, 1):
         name = _clean(card.get("name"), 140)

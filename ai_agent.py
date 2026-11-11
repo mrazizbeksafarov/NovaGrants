@@ -52,6 +52,24 @@ if THINKING_LEVEL not in {"minimal", "low", "medium", "high"}:
 # "thinking" sozlamasini qabul qilmagan modellar
 _NO_THINKING_CONFIG = set()
 
+# Shu yurishda foydasiz bo'lgan modellar: kunlik bepul kvota tugagan (429, per day)
+# yoki to'liq kutish muddatida javob bermagan (504). Har to'plamda ularni qayta
+# kutish bir yurishga o'nlab daqiqa qo'shardi.
+_UNAVAILABLE_MODELS = set()
+
+
+def _mark_unavailable(model: str, exc: Exception) -> bool:
+    msg = str(exc)
+    code = getattr(exc, "code", None)
+    daily_quota = code == 429 and ("per day" in msg.lower() or "PerDay" in msg)
+    deadline = code == 504 or "DEADLINE_EXCEEDED" in msg
+    if daily_quota or deadline:
+        _UNAVAILABLE_MODELS.add(model)
+        reason = "kunlik kvota tugagan" if daily_quota else "javob bermadi (504)"
+        print(f"  {model}: {reason} — bu yurishda boshqa ishlatilmaydi.")
+        return True
+    return False
+
 # Bir nechta Gemini API kalitlari ro'yxati (kalitlar rotatsiyasi va 429/503 da uzluksiz o'tish)
 _raw_keys = os.getenv("GEMINI_API_KEYS", "") or os.getenv("GEMINI_API_KEY", "")
 API_KEYS = list(dict.fromkeys(k.strip() for k in re.split(r"[,;\s]+", _raw_keys)
@@ -209,11 +227,23 @@ def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Opt
         "Javobni FAQAT bitta to'liq URL yoki NONE qilib qaytar."
     )
 
+    # Havola tanlash oddiy vazifa: Groq'ning katta kunlik limiti shunga sarflanadi,
+    # Gemini'ning kichik bepul kvotasi (kuniga ~20 so'rov) esa post tahririga qoladi.
+    if groq_fallback.configured():
+        ans = groq_fallback.request_text(prompt)
+        if ans and ans != "NONE" and ans.startswith("http"):
+            clean_ans = ans.split()[0].rstrip(".,;)\"'>")
+            if clean_ans in valid_candidates:
+                return clean_ans
+        return None
+
     for attempt in range(min(2, len(API_KEYS) * 2)):
         cli = get_client(attempt % len(API_KEYS))
         if not cli:
             continue
         model = MODEL_CHAIN[attempt % min(2, len(MODEL_CHAIN))]
+        if model in _UNAVAILABLE_MODELS:
+            continue
         try:
             cfg_kwargs = {}
             if model.startswith("gemini-3"):
@@ -229,7 +259,8 @@ def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Opt
                 if clean_ans in valid_candidates:
                     return clean_ans
         except Exception as exc:
-            print(f"  Havola AI xatosi ({model}): {type(exc).__name__}")
+            if not _mark_unavailable(model, exc):
+                print(f"  Havola AI xatosi ({model}): {type(exc).__name__}")
             continue
     return None
 
@@ -272,6 +303,8 @@ def generate_post_content(grants: list) -> dict:
     for attempt in range(total_attempts):
         cli = get_client(attempt % num_keys)
         model = plan[attempt]
+        if model in _UNAVAILABLE_MODELS:
+            continue
         try:
             resp = cli.models.generate_content(
                 model=model, contents=prompt, config=_config_for(model))
@@ -281,6 +314,9 @@ def generate_post_content(grants: list) -> dict:
             if "hinking" in msg and "not supported" in msg and model not in _NO_THINKING_CONFIG:
                 _NO_THINKING_CONFIG.add(model)
                 print(f"  {model} 'thinking' sozlamasini qo'llamaydi — sozlamasiz qayta urinamiz.")
+                continue
+
+            if _mark_unavailable(model, e):
                 continue
 
             transient = getattr(e, "code", None) in {408, 429, 500, 502, 503, 504} or any(
@@ -345,11 +381,21 @@ def _groq_content(grants):
         normalize = lambda text: re.sub(r"\s+", " ", str(text or "")).strip().casefold()
         if any(not 1 <= c["index"] <= len(grants) for c in data["cards"]):
             return None
-        if any(normalize(c["eligibility_evidence"]) not in normalize(grants[c["index"] - 1].get("summary", ""))
-               for c in data["cards"]):
-            print("  Groq moslik dalili manbada yo'q — kartochkalar rad etildi.")
-            return None
-        return _attach_urls({**data, "usage": result["usage"]}, grants)
+        # Oxirgi zaxira: bitta noto'g'ri iqtibos butun to'plamni yo'qotmasin. Dalili
+        # manbada topilmagan kartochka tashlanadi, uning granti esa "rad etilgan" deb
+        # yozilmaydi — keyingi yurishda qayta ko'riladi.
+        verified, unverified = [], []
+        for c in data["cards"]:
+            grant = grants[c["index"] - 1]
+            if normalize(c["eligibility_evidence"]) in normalize(grant.get("summary", "")):
+                verified.append(c)
+            else:
+                unverified.append(grant["url"])
+        if unverified:
+            print(f"  Groq: {len(unverified)} ta kartochkaning moslik dalili manbada yo'q — ular keyingi yurishga qoldi.")
+        content = _attach_urls({**data, "cards": verified, "usage": result["usage"]}, grants)
+        content["unverified_urls"] = unverified
+        return content
     except (ValidationError, KeyError, TypeError, ValueError):
         print("  Groq zaxira javobi validatsiyadan o'tmadi.")
         return None
