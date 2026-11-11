@@ -22,6 +22,7 @@ import json
 from pathlib import Path
 
 import requests
+from urllib.parse import urlencode
 from dotenv import load_dotenv
 from rich_schema import validate_blocks, rich_usage
 
@@ -233,8 +234,19 @@ def strip_tags_keep_links(html: str) -> str:
     return html_module.unescape(out)
 
 
+# Shu publish() davomida yuborilgan xabarlar (ulashish tugmasi uchun).
+_sent_messages = []
+_last_result = None
+
+SHARE_CHANNEL = "Nova_Grants"
+SHARE_TEXT = "Xalqaro grant va stipendiyalar — har kuni Nova Grants kanalida"
+SHARE_BUTTON_TEXT = "Do'stlarga ulashish"
+
+
 def _post(payload: dict, method: str = "sendMessage") -> tuple:
     """Bitta so'rov yuboradi. Qaytaradi: (muvaffaqiyat, xato_matni)."""
+    global _last_result
+    _last_result = None
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
     try:
         if method == "sendRichMessage" and "attach://nova_cover" in str(payload):
@@ -271,6 +283,7 @@ def _post(payload: dict, method: str = "sendMessage") -> tuple:
     if not isinstance(data, dict):
         raise DeliveryUncertain("Telegram javobining tuzilishi noma'lum")
     if data.get("ok"):
+        _last_result = data.get("result")
         return True, ""
     return False, data.get("description", f"HTTP {resp.status_code}")
 
@@ -307,6 +320,7 @@ def send_telegram_message(text: str, target_chat_id: str = None) -> bool:
         for attempt in range(MAX_SEND_RETRY):
             ok, err = _post(payload)
             if ok:
+                _remember_sent()
                 print(f"  ✅ {i}/{len(chunks)}-qism yuborildi")
                 sent = True
                 break
@@ -434,6 +448,7 @@ def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = 
         for attempt in range(MAX_SEND_RETRY):
             ok, err = _post(payload, method="sendRichMessage")
             if ok:
+                _remember_sent()
                 print(f"  ✅ {i}/{len(groups)}-qism yuborildi (rich, {len(group)} blok)")
                 sent = True
                 sent_count += 1
@@ -484,12 +499,49 @@ def legacy_rich_blocks(blocks):
     return convert(blocks)
 
 
+def _remember_sent():
+    if isinstance(_last_result, dict) and _last_result.get("message_id"):
+        _sent_messages.append(_last_result)
+
+
+def share_url(first_message: dict) -> str:
+    """Telegram ulashish oynasi: kanal postining o'z havolasi + qisqa reklama matni."""
+    username = (first_message.get("chat") or {}).get("username")
+    link = (f"https://t.me/{username}/{first_message['message_id']}" if username
+            else f"https://t.me/{SHARE_CHANNEL}")
+    return "https://t.me/share/url?" + urlencode({"url": link, "text": SHARE_TEXT})
+
+
+def _attach_share_button():
+    """Postning eng pastiga keng "ulashish" tugmasi. Post allaqachon chiqqan —
+    tugma qo'shilmasa ham yurish muvaffaqiyatli hisoblanadi."""
+    if not _sent_messages:
+        return False
+    first, last = _sent_messages[0], _sent_messages[-1]
+    payload = {"chat_id": (last.get("chat") or {}).get("id"), "message_id": last["message_id"],
+               "reply_markup": {"inline_keyboard": [[{"text": SHARE_BUTTON_TEXT, "url": share_url(first)}]]}}
+    try:
+        ok, err = _post(payload, method="editMessageReplyMarkup")
+    except DeliveryUncertain:
+        ok, err = False, "javob noma'lum"
+    print("  Ulashish tugmasi qo'shildi." if ok else f"  Ulashish tugmasi qo'shilmadi: {err}")
+    return ok
+
+
 def publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
     """Avval rich message bilan urinadi, bo'lmasa HTML ga qaytadi.
 
     Ikkala ko'rinish ham post_builder.py da BIR MANBADAN quriladi, shuning uchun
     qaysi yo'l ishlashidan qat'i nazar mazmun va HAVOLALAR bir xil bo'ladi.
     """
+    _sent_messages.clear()
+    delivered = _publish(blocks, html_text, target_chat_id)
+    if delivered:
+        _attach_share_button()
+    return delivered
+
+
+def _publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
     if blocks:
         ok, sent = send_rich_message(blocks, html_to_plain(html_text), target_chat_id)
         if ok:
