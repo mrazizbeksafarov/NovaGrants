@@ -32,8 +32,11 @@ import groq_fallback
 
 load_dotenv()
 
+# 2026-11-12: 3.6 Flash is primary because 3.8/3.7 Flash returned 504 after the full
+# 240 s deadline even for a one-word prompt, while 3.6 sorted the control set correctly
+# in ~12 s. Reorder via the GEMINI_MODELS Actions variable once 3.8 is stable.
 MODEL_CHAIN = [m.strip() for m in os.getenv(
-    "GEMINI_MODELS", "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash"
+    "GEMINI_MODELS", "gemini-3.6-flash,gemini-3.8-flash,gemini-3.7-flash"
 ).split(",") if m.strip()]
 if not MODEL_CHAIN:
     raise ValueError("GEMINI_MODELS bo'sh bo'lishi mumkin emas")
