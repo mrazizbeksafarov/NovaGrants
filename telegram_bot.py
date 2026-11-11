@@ -506,7 +506,10 @@ def _remember_sent():
 
 def share_url(first_message: dict) -> str:
     """Telegram ulashish oynasi: kanal postining o'z havolasi + qisqa reklama matni."""
-    username = (first_message.get("chat") or {}).get("username")
+    chat = first_message.get("chat") or {}
+    # Faqat ommaviy kanal postining havolasi bor. Shaxsiy chatda (masalan admin
+    # sinovida) chat.username — odamning shaxsiy username'i, uni ulashish xato.
+    username = chat.get("username") if chat.get("type") == "channel" else None
     link = (f"https://t.me/{username}/{first_message['message_id']}" if username
             else f"https://t.me/{SHARE_CHANNEL}")
     return "https://t.me/share/url?" + urlencode({"url": link, "text": SHARE_TEXT})

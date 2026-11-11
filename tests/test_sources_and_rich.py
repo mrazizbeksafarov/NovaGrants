@@ -400,7 +400,7 @@ def test_ai_headline_cannot_label_partial_awards_fully_funded(monkeypatch):
 
 def test_share_button_links_the_channel_post_itself():
     from urllib.parse import parse_qs, urlparse
-    url = telegram_bot.share_url({"message_id": 512, "chat": {"id": -100, "username": "Nova_Grants"}})
+    url = telegram_bot.share_url({"message_id": 512, "chat": {"id": -100, "type": "channel", "username": "Nova_Grants"}})
     query = parse_qs(urlparse(url).query)
     assert url.startswith("https://t.me/share/url?")
     assert query["url"] == ["https://t.me/Nova_Grants/512"]
@@ -415,7 +415,7 @@ def test_share_button_is_added_to_last_part_after_delivery(monkeypatch):
     def post(payload, method="sendMessage"):
         calls.append((method, payload))
         if method == "sendRichMessage":
-            telegram_bot._last_result = {"message_id": next_id[0], "chat": {"id": -100, "username": "Nova_Grants"}}
+            telegram_bot._last_result = {"message_id": next_id[0], "chat": {"id": -100, "type": "channel", "username": "Nova_Grants"}}
             next_id[0] += 1
         return True, ""
     monkeypatch.setattr(telegram_bot, "_post", post)
@@ -434,8 +434,14 @@ def test_failed_share_button_does_not_fail_the_delivered_post(monkeypatch):
     def post(payload, method="sendMessage"):
         if method == "editMessageReplyMarkup":
             return False, "Bad Request"
-        telegram_bot._last_result = {"message_id": 7, "chat": {"id": -100, "username": "Nova_Grants"}}
+        telegram_bot._last_result = {"message_id": 7, "chat": {"id": -100, "type": "channel", "username": "Nova_Grants"}}
         return True, ""
     monkeypatch.setattr(telegram_bot, "_post", post)
     blocks, html = build_post("New", [card()])
     assert telegram_bot.publish(blocks, html) is True
+
+
+def test_share_link_never_uses_a_private_chat_username():
+    from urllib.parse import parse_qs, urlparse
+    url = telegram_bot.share_url({"message_id": 95, "chat": {"id": 7, "type": "private", "username": "someone"}})
+    assert parse_qs(urlparse(url).query)["url"] == ["https://t.me/Nova_Grants"]
