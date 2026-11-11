@@ -1,0 +1,248 @@
+{
+  "rich_message": {
+    "blocks": [
+      {
+        "type": "photo",
+        "photo": {
+          "type": "photo",
+          "media": "attach://nova_cover"
+        }
+      },
+      {
+        "type": "heading",
+        "size": 2,
+        "text": "Xalqaro ta’lim imkoniyatlari"
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "details",
+        "summary": "Dasturlar ro'yxati · 3",
+        "blocks": [
+          {
+            "type": "table",
+            "cells": [
+              [
+                {
+                  "text": "Dastur",
+                  "align": "left",
+                  "valign": "middle",
+                  "is_header": true
+                },
+                {
+                  "text": "Muddat",
+                  "align": "left",
+                  "valign": "middle",
+                  "is_header": true
+                }
+              ],
+              [
+                {
+                  "text": {
+                    "type": "anchor_link",
+                    "text": "Global Flourishing Scholarship (2027)",
+                    "anchor_name": "grant-1"
+                  },
+                  "align": "left",
+                  "valign": "middle"
+                },
+                {
+                  "text": "Ko'rsatilmagan",
+                  "align": "left",
+                  "valign": "middle"
+                }
+              ],
+              [
+                {
+                  "text": {
+                    "type": "anchor_link",
+                    "text": "ETH Student Summer Research Fellowship",
+                    "anchor_name": "grant-2"
+                  },
+                  "align": "left",
+                  "valign": "middle"
+                },
+                {
+                  "text": "Ko'rsatilmagan",
+                  "align": "left",
+                  "valign": "middle"
+                }
+              ],
+              [
+                {
+                  "text": {
+                    "type": "anchor_link",
+                    "text": "NUS Amgen Scholars Program",
+                    "anchor_name": "grant-3"
+                  },
+                  "align": "left",
+                  "valign": "middle"
+                },
+                {
+                  "text": "Ko'rsatilmagan",
+                  "align": "left",
+                  "valign": "middle"
+                }
+              ]
+            ],
+            "is_compact": true,
+            "is_striped": true
+          }
+        ]
+      },
+      {
+        "type": "anchor",
+        "name": "grant-1"
+      },
+      {
+        "type": "heading",
+        "size": 3,
+        "text": "01 · Global Flourishing Scholarship (2027)"
+      },
+      {
+        "type": "blockquote",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": {
+              "type": "bold",
+              "text": "Birinchi yil kontraktidan £5 000 chegirma"
+            }
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Sussex universitetida magistratura xarajatlarini kamaytirish uchun kontrakt chegirmasi."
+      },
+      {
+        "type": "details",
+        "summary": "Dastur shartlari",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              {
+                "type": "bold",
+                "text": "Kimlar uchun: "
+              },
+              "Tegishli magistratura kursiga qabul olgan, Overseas fee statusiga ega nomzodlar. Kontrakti boshqa tashkilot tomonidan to‘liq qoplanadiganlar qatnasha olmaydi."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "footer",
+        "text": "Muddat ko'rsatilmagan"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          {
+            "text": "Ariza va tafsilotlar",
+            "style": "primary",
+            "url": "https://www.sussex.ac.uk/study/fees-funding/masters-scholarships/view/1959-Global-Flourishing-Scholarship"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "anchor",
+        "name": "grant-2"
+      },
+      {
+        "type": "heading",
+        "size": 3,
+        "text": "02 · ETH Student Summer Research Fellowship"
+      },
+      {
+        "type": "paragraph",
+        "text": "ETH Zurich yozgi tadqiqot fellowship dasturi. Ushbu kartochka yangi formatni ko‘rsatish uchun berilgan."
+      },
+      {
+        "type": "details",
+        "summary": "Dastur shartlari",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              {
+                "type": "bold",
+                "text": "Kimlar uchun: "
+              },
+              "Amaldagi fuqarolik, o‘qish bosqichi va muddat talablarini rasmiy sahifada tekshiring."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "footer",
+        "text": "Muddat ko'rsatilmagan"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          {
+            "text": "Ariza va tafsilotlar",
+            "style": "primary",
+            "url": "https://inf.ethz.ch/studies/summer-research-fellowship.html"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "anchor",
+        "name": "grant-3"
+      },
+      {
+        "type": "heading",
+        "size": 3,
+        "text": "03 · NUS Amgen Scholars Program"
+      },
+      {
+        "type": "paragraph",
+        "text": "Singapurdagi NUS Amgen dasturi. Kartochka avtomatik saralash natijasi sifatida e’lon qilinmagan."
+      },
+      {
+        "type": "details",
+        "summary": "Dastur shartlari",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              {
+                "type": "bold",
+                "text": "Kimlar uchun: "
+              },
+              "Tegishli qabul siklining talablarini rasmiy sahifada tekshiring."
+            ]
+          }
+        ]
+      },
+      {
+        "type": "footer",
+        "text": "Muddat ko'rsatilmagan"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          {
+            "text": "Ariza va tafsilotlar",
+            "style": "primary",
+            "url": "https://www.dbs.nus.edu.sg/outreach/amgen-scholars-program/"
+          }
+        ]
+      },
+      {
+        "type": "footer",
+        "text": "@Nova_Grants"
+      }
+    ]
+  },
+  "html_fallback": "<b>NOVA GRANTS</b>\n\n<b>Xalqaro ta’lim imkoniyatlari</b>\n\n<b>01 · Global Flourishing Scholarship (2027)</b>\n<blockquote><b>Birinchi yil kontraktidan £5 000 chegirma</b></blockquote>\nSussex universitetida magistratura xarajatlarini kamaytirish uchun kontrakt chegirmasi.\n<blockquote expandable><b>Kimlar uchun:</b> Tegishli magistratura kursiga qabul olgan, Overseas fee statusiga ega nomzodlar. Kontrakti boshqa tashkilot tomonidan to‘liq qoplanadiganlar qatnasha olmaydi.</blockquote>\n<i>Muddat ko'rsatilmagan</i>\n<a href=\"https://www.sussex.ac.uk/study/fees-funding/masters-scholarships/view/1959-Global-Flourishing-Scholarship\">Ariza topshirish va batafsil ma'lumot</a>\n\n<b>02 · ETH Student Summer Research Fellowship</b>\nETH Zurich yozgi tadqiqot fellowship dasturi. Ushbu kartochka yangi formatni ko‘rsatish uchun berilgan.\n<blockquote expandable><b>Kimlar uchun:</b> Amaldagi fuqarolik, o‘qish bosqichi va muddat talablarini rasmiy sahifada tekshiring.</blockquote>\n<i>Muddat ko'rsatilmagan</i>\n<a href=\"https://inf.ethz.ch/studies/summer-research-fellowship.html\">Ariza topshirish va batafsil ma'lumot</a>\n\n<b>03 · NUS Amgen Scholars Program</b>\nSingapurdagi NUS Amgen dasturi. Kartochka avtomatik saralash natijasi sifatida e’lon qilinmagan.\n<blockquote expandable><b>Kimlar uchun:</b> Tegishli qabul siklining talablarini rasmiy sahifada tekshiring.</blockquote>\n<i>Muddat ko'rsatilmagan</i>\n<a href=\"https://www.dbs.nus.edu.sg/outreach/amgen-scholars-program/\">Ariza topshirish va batafsil ma'lumot</a>\n\n@Nova_Grants"
+}

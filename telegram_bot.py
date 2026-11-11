@@ -17,9 +17,13 @@ Shuning uchun:
 import os
 import re
 import time
+import html as html_module
+import json
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+from rich_schema import validate_blocks, rich_usage
 
 load_dotenv()
 
@@ -27,14 +31,16 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
 ADMIN_ID = os.getenv("ADMIN_ID", "").strip()
 
-# Xabar uzunligi chegarasi jonli API'da o'lchandi (tools/probe_telegram.py):
-# 32768 belgi o'tadi, 32769 da "text is too long". Bu Bot API 10.x yangiligi —
-# ilgari 4096 edi. Mijozlar ~8000 belgidan keyin "Show more" tugmasini ko'rsatadi.
-API_LIMIT = 32768
-SAFE_LIMIT = 7500            # "Show more" chegarasidan pastda — post to'liq ko'rinadi
+# Plain sendMessage and rich messages have DIFFERENT limits in Bot API 10.4.
+API_LIMIT = 4096
+SAFE_LIMIT = 3500            # leave room for balanced HTML tags
 PAUSE_BETWEEN = 3.0          # xabarlar orasidagi tanaffus (sekundiga 1 xabar limiti)
 MAX_SEND_RETRY = 3
-MAX_BLOCKS_PER_MESSAGE = 90  # bitta rich xabarga sig'adigan blok soni
+MAX_BLOCKS_PER_MESSAGE = 450  # includes nested blocks and list items
+
+
+class DeliveryUncertain(RuntimeError):
+    """Telegram may have accepted a write; never resend or fall back blindly."""
 
 # Telegram HTML rejimida ruxsat etilgan teglar (rasmiy hujjat: core.telegram.org/bots/api)
 # blockquote va "blockquote expandable" (yig'iladigan iqtibos) hamda tg-emoji —
@@ -144,7 +150,11 @@ def _split_oversized(block: str, limit: int) -> list:
         if utf16_len(candidate) > limit:
             if current:
                 out.append(current)
-                current = line
+                if utf16_len(line) > limit:
+                    out.extend(_hard_split(line, limit))
+                    current = ""
+                else:
+                    current = line
             else:
                 # Bitta qatorning o'zi juda uzun — teg ichida kesib qo'ymaslik uchun
                 # teg chegaralarida bo'lamiz
@@ -161,16 +171,33 @@ def _hard_split(line: str, limit: int) -> list:
     """Oxirgi chora: teglarni butun saqlagan holda bo'lish."""
     parts, current = [], ""
     # Matnni teg va oddiy matn bo'laklariga ajratamiz
-    for piece in re.split(r"(<[^>]+>)", line):
+    for piece in re.split(r"(<[^>]+>|&(?:#[0-9]+|#x[0-9a-fA-F]+|[a-zA-Z]+);)", line):
         if not piece:
             continue
         if utf16_len(current) + utf16_len(piece) > limit and current:
             parts.append(current)
             current = ""
-        if utf16_len(piece) > limit:              # juda uzun oddiy matn
+        if piece.startswith("<") or (piece.startswith("&") and piece.endswith(";")):
+            # Never split an HTML tag/attribute or an escaped entity.
+            current += piece
+        elif utf16_len(piece) > limit:           # juda uzun oddiy matn
             while piece:
                 room = limit - utf16_len(current)
-                cut = piece[:max(room, 1)]
+                units = 0
+                pos = 0
+                for char in piece:
+                    width = 2 if ord(char) > 0xFFFF else 1
+                    if units + width > room:
+                        break
+                    units += width
+                    pos += 1
+                if pos == 0:
+                    if current:
+                        parts.append(current)
+                        current = ""
+                        continue
+                    raise ValueError("Xabar limiti bitta belgidan kichik")
+                cut = piece[:pos]
                 current += cut
                 piece = piece[len(cut):]
                 if piece:
@@ -203,33 +230,46 @@ def strip_tags_keep_links(html: str) -> str:
 
     out = _ANCHOR.sub(repl, html or "")
     out = re.sub(r"<[^>]+>", "", out)
-    return (out.replace("&amp;", "&").replace("&lt;", "<")
-               .replace("&gt;", ">").replace("&quot;", '"'))
+    return html_module.unescape(out)
 
 
 def _post(payload: dict, method: str = "sendMessage") -> tuple:
     """Bitta so'rov yuboradi. Qaytaradi: (muvaffaqiyat, xato_matni)."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
     try:
-        resp = requests.post(url, json=payload, timeout=30)
-    except requests.Timeout:
-        return False, "timeout"
+        if method == "sendRichMessage" and "attach://nova_cover" in str(payload):
+            cover = Path(__file__).resolve().parent / "assets" / "nova-grants-cover.png"
+            with cover.open("rb") as media:
+                data = {key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
+                        for key, value in payload.items()}
+                resp = requests.post(url, data=data, files={"nova_cover": (cover.name, media, "image/png")}, timeout=45)
+        else:
+            resp = requests.post(url, json=payload, timeout=30)
+    except (requests.Timeout, requests.ConnectionError) as exc:
+        raise DeliveryUncertain("Telegram javobi noma'lum; avtomatik qayta yuborilmadi") from exc
     except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
+        return False, type(e).__name__
+
+    if resp.status_code >= 500:
+        raise DeliveryUncertain(f"Telegram HTTP {resp.status_code}; yuborish natijasi noma'lum")
 
     if resp.status_code == 429:
         retry_after = 5
         try:
             retry_after = resp.json().get("parameters", {}).get("retry_after", 5)
         except Exception:
-            pass
+            retry_after = 5
         return False, f"429:{retry_after}"
 
     try:
         data = resp.json()
     except Exception:
+        if resp.status_code < 400:
+            raise DeliveryUncertain("Telegram muvaffaqiyat javobi o'qilmadi")
         return False, f"HTTP {resp.status_code}"
 
+    if not isinstance(data, dict):
+        raise DeliveryUncertain("Telegram javobining tuzilishi noma'lum")
     if data.get("ok"):
         return True, ""
     return False, data.get("description", f"HTTP {resp.status_code}")
@@ -243,14 +283,14 @@ def send_telegram_message(text: str, target_chat_id: str = None) -> bool:
 
     text = sanitize_html(text)
 
-    if not BOT_TOKEN or BOT_TOKEN == "your_telegram_bot_token_here" or not CHANNEL_ID:
+    chat_id = target_chat_id or CHANNEL_ID
+    if not BOT_TOKEN or BOT_TOKEN in {"your_telegram_bot_token_here", "your_bot_token_here"} or not chat_id:
         print("Telegram sozlamalari topilmadi. Xabar konsolga chiqariladi:")
         print("=" * 60)
         print(text)
         print("=" * 60)
-        return True
+        return False
 
-    chat_id = target_chat_id or CHANNEL_ID
     chunks = split_message(text)
     print(f"Xabar {len(chunks)} qismga bo'lindi (eng kattasi {max(utf16_len(c) for c in chunks)} belgi).")
 
@@ -325,26 +365,40 @@ def rich_messages_available() -> bool:
 
 def _split_blocks(blocks: list, limit: int = MAX_BLOCKS_PER_MESSAGE) -> list:
     """Bloklarni bo'ladi — imkoniyat chegarasida (heading size=3 dan oldin)."""
-    if len(blocks) <= limit:
-        return [blocks]
-
-    groups, current = [], []
+    cards, card = [], []
     for block in blocks:
-        starts_card = block.get("type") == "heading" and block.get("size") == 3
-        if starts_card and len(current) >= limit:
+        starts_card = block.get("type") == "anchor" or (
+            block.get("type") == "heading" and block.get("size") == 3
+            and not (card and card[-1].get("type") == "anchor"))
+        if starts_card and card:
+            cards.append(card)
+            card = []
+        card.append(block)
+    if card:
+        cards.append(card)
+    groups, current = [], []
+    for card in cards:
+        count, chars = rich_usage(current + card)
+        if current and (count > limit or chars > 30000):
             groups.append(current)
             current = []
-        current.append(block)
+        count, chars = rich_usage(card)
+        if count > limit or chars > 30000:
+            raise ValueError("Bitta grant rich-message chegarasidan katta")
+        current.extend(card)
     if current:
         groups.append(current)
+    if len(groups) > 1:
+        # Message-internal navigation cannot point into another Telegram message.
+        groups = [[b for b in group if "anchor_link" not in str(b)]
+                  for group in groups]
     return groups
 
 
 def html_to_plain(html: str) -> str:
     """HTML dan oddiy matn — rich message'ning `text` maydoni uchun."""
     text = re.sub(r"<[^>]+>", "", html or "")
-    text = (text.replace("&amp;", "&").replace("&lt;", "<")
-                .replace("&gt;", ">").replace("&quot;", '"'))
+    text = html_module.unescape(text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
@@ -361,7 +415,7 @@ def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = 
     InputRichMessage da `html`, `markdown` yoki `blocks` dan AYNAN BITTASI
     bo'lishi kerak (rasmiy hujjat, Bot API 10.2). `text` degan maydon yo'q.
     """
-    if not blocks or not BOT_TOKEN or not CHANNEL_ID:
+    if not blocks or not BOT_TOKEN or not (target_chat_id or CHANNEL_ID):
         return False, 0
     if not rich_messages_available():
         return False, 0
@@ -371,6 +425,9 @@ def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = 
     sent_count = 0
 
     for i, group in enumerate(groups, 1):
+        problems = validate_blocks(group)
+        if problems:
+            raise ValueError("Rich-message sxemasi: " + "; ".join(problems[:3]))
         payload = {"chat_id": chat_id, "rich_message": {"blocks": group}}
 
         sent = False
@@ -398,31 +455,33 @@ def send_rich_message(blocks: list, plain_text: str = "", target_chat_id: str = 
 
 
 def validate_rich_blocks(blocks: list, plain_text: str = "") -> tuple:
-    """Bloklar TUZILISHINI tekshiradi — hech narsa yubormasdan.
+    """Validate locally against our Bot API 10.4 subset, without API probes."""
+    problems = validate_blocks(blocks)
+    return not problems, "; ".join(problems)
 
-    Mavjud bo'lmagan chat_id=1 ga so'rov yuboriladi va "chat not found" javobi
-    sxema to'g'ri ekanini bildiradi.
 
-    CHEKLOV — BUNGA TO'LIQ ISHONMANG. Telegram noma'lum maydonlarni parse
-    bosqichida rad etmaydi va mazmun tekshiruvini chat topilgandan KEYIN
-    bajaradi. Ya'ni {"header": ...} kabi noto'g'ri maydon nomi ham shu yerda
-    "yaroqli" ko'rinadi, lekin haqiqiy yuborishda
-    RICH_MESSAGE_CONTENT_REQUIRED bo'lib chiqadi.
-    Maydon nomlari faqat rasmiy hujjatdan olinishi kerak.
-    Shu bois publish() da HTML zaxirasi doim saqlanadi.
-    """
-    if not blocks or not BOT_TOKEN:
-        return False, "token yoki blok yo'q"
-
-    try:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendRichMessage",
-            json={"chat_id": 1, "rich_message": {"blocks": blocks}}, timeout=20)
-        desc = resp.json().get("description", "")
-    except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
-
-    return ("chat not found" in desc), desc
+def legacy_rich_blocks(blocks):
+    """Remove new display features after a confirmed rejection; keep rich layout."""
+    def convert(value):
+        if isinstance(value, list):
+            out = []
+            for v in value:
+                if isinstance(v, dict) and v.get("type") == "buttons":
+                    links = [{"type": "url", "url": b["url"], "text": b["text"]}
+                             for b in v.get("buttons", []) if b.get("url")]
+                    if links:
+                        out.append({"type": "paragraph", "text": links})
+                elif not isinstance(v, dict) or v.get("type") not in {"table", "anchor", "photo"}:
+                    converted = convert(v)
+                    if not (isinstance(converted, dict) and converted.get("type") == "details" and not converted.get("blocks")):
+                        out.append(converted)
+            return out
+        if isinstance(value, dict):
+            if value.get("type") == "date_time":
+                return value.get("text", "")
+            return {k: convert(v) for k, v in value.items()}
+        return value
+    return convert(blocks)
 
 
 def publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
@@ -442,6 +501,13 @@ def publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
             print(f"  ❌ Rich xabar {sent}-qismdan keyin uzildi. HTML zaxirasi "
                   f"YUBORILMADI (takror postning oldini olish uchun).")
             return False
+        legacy = legacy_rich_blocks(blocks)
+        if legacy != blocks and rich_messages_available():
+            ok, sent = send_rich_message(legacy, html_to_plain(html_text), target_chat_id)
+            if ok:
+                return True
+            if sent:
+                return False
         print("  Rich message ishlamadi — HTML ko'rinishga o'tilmoqda.")
     return send_telegram_message(html_text, target_chat_id)
 
@@ -455,12 +521,16 @@ def notify_admin(text: str) -> bool:
     """
     if not ADMIN_ID or not BOT_TOKEN or ADMIN_ID == "your_admin_id":
         return False
-    ok, err = _post({
-        "chat_id": ADMIN_ID,
-        "text": text[:4000],
-        "parse_mode": "HTML",
-        "link_preview_options": {"is_disabled": True},
-    })
+    try:
+        ok, err = _post({
+            "chat_id": ADMIN_ID,
+            "text": text[:4000],
+            "parse_mode": "HTML",
+            "link_preview_options": {"is_disabled": True},
+        })
+    except DeliveryUncertain:
+        print("Adminga bildirishnoma yetgani tasdiqlanmadi.")
+        return False
     if not ok:
         print(f"  Adminga xabar ketmadi: {err}")
     return ok

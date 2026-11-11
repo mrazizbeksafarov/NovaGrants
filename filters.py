@@ -134,10 +134,13 @@ _MONTHS = {
     "april": 4, "apr": 4, "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7,
     "august": 8, "aug": 8, "september": 9, "sep": 9, "sept": 9, "october": 10, "oct": 10,
     "november": 11, "nov": 11, "december": 12, "dec": 12,
+    "yanvar": 1, "fevral": 2, "mart": 3, "aprel": 4, "may": 5,
+    "iyun": 6, "iyul": 7, "avgust": 8, "sentabr": 9, "sentyabr": 9,
+    "oktabr": 10, "oktyabr": 10, "noyabr": 11, "dekabr": 12,
 }
 _DATE_PATTERNS = [
     # 31 December 2026 / 31 Dec, 2026
-    re.compile(r"\b(\d{1,2})\s+([a-z]{3,9})[,\s]+(\d{4})\b", re.I),
+    re.compile(r"\b(\d{1,2})(?:\s+|\s*[-–]\s*)([a-z]{3,9})[,\s]+(\d{4})\b", re.I),
     # December 31, 2026 / Dec 31 2026
     re.compile(r"\b([a-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?[,\s]+(\d{4})\b", re.I),
     # 2026-12-31
@@ -147,7 +150,7 @@ _DATE_PATTERNS = [
 ]
 _DEADLINE_CONTEXT = re.compile(
     r"(deadline|apply\s+by|closing\s+date|closes\s+on|last\s+date|due\s+(by|date)"
-    r"|application[s]?\s+close|oxirgi\s+muddat|muddat)[^.\n]{0,80}",
+    r"|application[s]?\s+close|oxirgi\s+muddat|muddat)[^\n]{0,100}",
     re.I,
 )
 
@@ -195,11 +198,11 @@ def _try_build(y, m, d):
         return None
 
 
-def extract_deadline(text: str):
+def extract_deadline(text: str, *, include_past: bool = False):
     """Matndan oxirgi muddatni topadi. Topilmasa None.
 
-    Avval "deadline: ..." kontekstidagi sanani qidiradi, topilmasa umuman
-    matndagi kelajakdagi eng yaqin sanani oladi.
+    Faqat muddat kontekstidagi sanani oladi; tadbir boshlanish sanasi deadline emas.
+    include_past=True eskirgan e'lonlarni aniqlash uchun eng so'nggi muddatni beradi.
     """
     if not text:
         return None
@@ -238,20 +241,16 @@ def extract_deadline(text: str):
                         dt = _try_build(year, a, b)          # MM/DD
                     else:
                         dt = _try_build(year, b, a)          # noaniq -> DD/MM
-                if dt and now - timedelta(days=1) <= dt <= horizon:
+                if dt and (include_past or now <= dt) and dt <= horizon:
                     found.append(dt)
         return found
 
     # 1) "deadline ..." atrofidagi sanalar ustuvor
     contexts = [m.group(0) for m in _DEADLINE_CONTEXT.finditer(text)]
-    for ctx in contexts:
-        hits = scan(ctx)
-        if hits:
-            return min(hits)
-
-    # 2) Umumiy matn
-    hits = scan(text)
-    return min(hits) if hits else None
+    hits = [dt for ctx in contexts for dt in scan(ctx)]
+    if not hits:
+        return None
+    return max(hits) if include_past else min(hits)
 
 
 def validate_deadline_iso(iso):
@@ -264,20 +263,24 @@ def validate_deadline_iso(iso):
     if not iso or not isinstance(iso, str) or len(iso) < 10:
         return None
 
-    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", iso.strip())
-    if not m:
-        return None
-
-    dt = _try_build(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    if not dt:
+    value = iso.strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            dt = datetime.fromisoformat(value).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        else:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.astimezone(timezone.utc)
+    except ValueError:
         return None
 
     now = datetime.now(timezone.utc)
-    if dt < now - timedelta(days=1):
+    if dt < now:
         return None                              # o'tib ketgan
     if dt > now + timedelta(days=900):
         return None                              # ~2.5 yildan uzoq — shubhali
-    return iso
+    return dt.isoformat().replace("+00:00", "Z")
 
 
 def deadline_passed(text: str) -> bool:
@@ -286,7 +289,8 @@ def deadline_passed(text: str) -> bool:
         return False
     if re.search(r"(applications?\s+(are\s+)?closed|deadline\s+(has\s+)?passed|muddat\s+tugagan)", text, re.I):
         return True
-    return False
+    deadline = extract_deadline(text, include_past=True)
+    return bool(deadline and deadline < datetime.now(timezone.utc))
 
 
 if __name__ == "__main__":

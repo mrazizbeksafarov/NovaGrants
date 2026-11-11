@@ -1,0 +1,499 @@
+{
+  "checked_at": "2026-11-11T16:09:03.198656+00:00",
+  "sources": [
+    {
+      "id": "opportunitydesk",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://opportunitydesk.org/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 0,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "ANH Academy Science-Policy Fellowships 2027 (Round 3)",
+          "url": "https://opportunitydesk.org/2026/11/11/anh-academy-science-policy-fellowships-2027-round-3/"
+        },
+        {
+          "title": "Harvard Kennedy School (HKS) American Service Fellowship 2027 (up to $100,000)",
+          "url": "https://opportunitydesk.org/2026/11/11/harvard-kennedy-school-american-service-fellowship-2027/"
+        }
+      ]
+    },
+    {
+      "id": "oyaop",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://oyaop.com/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 2,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Hurford Youth Fellows Program 2027 in the USA (Fully Funded)",
+          "url": "https://oyaop.com/opportunity/scholarships-and-fellowships/hurford-youth-fellows-program-2027-in-the-usa-fully-funded/"
+        },
+        {
+          "title": "Winter Korean Culture Camp 2027 in South Korea (Fully Funded)",
+          "url": "https://oyaop.com/opportunity/exchange-programs/winter-korean-culture-camp-2027-in-south-korea-fully-funded/"
+        }
+      ]
+    },
+    {
+      "id": "oppscorners",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://opportunitiescorners.com/feed/",
+      "status": "OK",
+      "entries": 6,
+      "fresh_entries": 6,
+      "unknown_dates": 0,
+      "newest_age_days": 0,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Dubai Government Free AI Course 2026 | One Million Prompters",
+          "url": "https://opportunitiescorners.com/one-million-prompters/"
+        },
+        {
+          "title": "Tsinghua Amgen Internship 2027 in China (Fully Funded)",
+          "url": "https://opportunitiescorners.com/tsinghua-amgen-internship-2027-in-china/"
+        }
+      ]
+    },
+    {
+      "id": "grantlar.uz",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://grantlar.uz/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 1,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "UTRIP: Bakalavrlar uchun Yaponiyaning Tokio universitetida haq toʻlanadigan yozgi amaliyot!",
+          "url": "https://grantlar.uz/utrip-amaliyot-dasturi/"
+        },
+        {
+          "title": "Hurford Youth Fellowship Program: AQSHda barcha xarajatlari qoplanadigan 4 oylik dastur!",
+          "url": "https://grantlar.uz/hurford-youth-fellowship-program-aqshda-barcha-xarajatlari-qoplanadigan-3-oylik-dastur/"
+        }
+      ]
+    },
+    {
+      "id": "scholarshipunion",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://scholarshipunion.com/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 0,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Arkansas Tech Scholarship 2027 in USA",
+          "url": "https://scholarshipunion.com/arkansas-tech-scholarship-2027-usa/"
+        },
+        {
+          "title": "SSRP Amgen Scholars Program 2027 in USA | Fully Funded",
+          "url": "https://scholarshipunion.com/ssrp-amgen-scholars-program-2027/"
+        }
+      ]
+    },
+    {
+      "id": "scholarships-corner",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://scholarshipscorner.website/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 0,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Humboldt Residency Program 2027 in Germany (Fully Funded)",
+          "url": "https://scholarshipscorner.website/humboldt-residency-program-germany/"
+        },
+        {
+          "title": "CERN Openlab Summer Student Program 2027, Switzerland | Fully Funded Internship",
+          "url": "https://scholarshipscorner.website/cern-openlab-summer-student-program/"
+        }
+      ]
+    },
+    {
+      "id": "scholars4dev",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://www.scholars4dev.com/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 2,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Schwarzman Scholars Program at Tsinghua University",
+          "url": "https://www.scholars4dev.com/schwarzman-scholars-program-at-tsinghua-university/"
+        },
+        {
+          "title": "Rhodes Scholarships at Oxford University for International Students",
+          "url": "https://www.scholars4dev.com/rhodes-international-scholarships-at-oxford-university/"
+        }
+      ]
+    },
+    {
+      "id": "opportunitiespedia",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://opportunitiespedia.com/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 8,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "ETH Student Summer Research Fellowship  in Switzerland 2027 (Fully Funded)",
+          "url": "https://opportunitiespedia.com/eth-student-summer-research-fellowship-2027/"
+        },
+        {
+          "title": "NUS Amgen Scholars Program 2027 in Singapore (Fully Funded)",
+          "url": "https://opportunitiespedia.com/nus-amgen-scholars-program-2027/"
+        }
+      ]
+    },
+    {
+      "id": "fullyscholarships",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://fullyscholarships.com/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 0,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "One Million Prompters 2026: Dubai Free Online AI Course With Certificate",
+          "url": "https://fullyscholarships.com/one-million-prompters-dubai-free-ai-course/"
+        },
+        {
+          "title": "World Impact Forum 2027 in Portugal (Fully Funded)",
+          "url": "https://fullyscholarships.com/world-impact-forum-2027-portugal/"
+        }
+      ]
+    },
+    {
+      "id": "youth-break-boundaries",
+      "type": "rss",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://youthbreaktheboundaries.com/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 0,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Commonwealth Shared Scholarship 2027–2028: Fully Funded Master’s Scholarship in the UK",
+          "url": "https://youthbreaktheboundaries.com/commonwealth-shared-scholarship-2027-2028-fully-funded-masters-scholarship-in-the-uk/"
+        },
+        {
+          "title": "Lingnan University Hong Kong PhD Fellowship Scheme 2027–2028",
+          "url": "https://youthbreaktheboundaries.com/lingnan-university-hong-kong-phd-fellowship-scheme-2027-2028/"
+        }
+      ]
+    },
+    {
+      "id": "usembassy-uz",
+      "type": "rss",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://uz.usembassy.gov/feed/",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 4,
+      "unknown_dates": 0,
+      "newest_age_days": 7,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "New health emergency operations center in Nukus advances Uzbekistan’s vision for stronger nationwide preparedness",
+          "url": "https://uz.usembassy.gov/new-health-emergency-operations-center-in-nukus-advances-uzbekistans-vision-for-stronger-nationwide-preparedness/"
+        },
+        {
+          "title": "U.S. Embassy Tashkent Concludes Freedom 250 Expo Series with Finale in Nukus",
+          "url": "https://uz.usembassy.gov/us-embassy-tashkent-concludes-freedom-250-expo-series-with-finale-in-nukus/"
+        }
+      ]
+    },
+    {
+      "id": "youth-europa",
+      "type": "rss",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://youth.europa.eu/rss.xml",
+      "status": "OK",
+      "entries": 10,
+      "fresh_entries": 10,
+      "unknown_dates": 0,
+      "newest_age_days": 0,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Angela",
+          "url": "https://youth.europa.eu/stories/my-traineeship-journey-split_en"
+        },
+        {
+          "title": "Farah",
+          "url": "https://youth.europa.eu/stories/internship-elementary-school-valencia_en"
+        }
+      ]
+    },
+    {
+      "id": "sussex-funding",
+      "type": "rss",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://www.sussex.ac.uk/study/fees-funding/masters-scholarships/rss/?all",
+      "status": "OK",
+      "entries": 31,
+      "fresh_entries": 31,
+      "unknown_dates": 0,
+      "newest_age_days": 1,
+      "date_policy": "live_details",
+      "samples": [
+        {
+          "title": "4 year PhDs at the EPSRC Centre for Doctoral Training in Quantum Information Science and Technologies (2027)",
+          "url": "http://www.sussex.ac.uk/study/fees-funding/masters-scholarships/view/1700-4-year-PhDs-at-the-EPSRC-Centre-for-Doctoral-Training-in-Quantum-Information-Science-and-Technologies"
+        },
+        {
+          "title": "AHRC Doctoral Landscape Award PhD Scholarships for research in Arts and Humanities (2027)",
+          "url": "http://www.sussex.ac.uk/study/fees-funding/masters-scholarships/view/1963-AHRC-Doctoral-Landscape-Award-PhD-Scholarships-for-research-in-Arts-and-Humanities"
+        }
+      ]
+    },
+    {
+      "id": "stipendium-news",
+      "type": "rss",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://stipendiumhungaricum.hu/news/feed/",
+      "status": "OK",
+      "entries": 12,
+      "fresh_entries": 1,
+      "unknown_dates": 0,
+      "newest_age_days": 43,
+      "date_policy": "max_60_days",
+      "samples": [
+        {
+          "title": "Where Discipline Meets Dreams: A Ballerina’s Journey to Hungary",
+          "url": "https://stipendiumhungaricum.hu/news/where-discipline-meets-dreams-a-ballerinas-journey-to-hungary/"
+        }
+      ]
+    },
+    {
+      "id": "tg:eyuf",
+      "type": "telegram",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://t.me/s/elyurtumidifoundation",
+      "status": "OK",
+      "entries": 11,
+      "fresh_entries": 11,
+      "external_links": 35
+    },
+    {
+      "id": "tg:yoshlar",
+      "type": "telegram",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://t.me/s/yoshlaragentligi",
+      "status": "OK",
+      "entries": 6,
+      "fresh_entries": 6,
+      "external_links": 29
+    },
+    {
+      "id": "tg:edu_uz",
+      "type": "telegram",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://t.me/s/eduuz",
+      "status": "OK",
+      "entries": 9,
+      "fresh_entries": 9,
+      "external_links": 28
+    },
+    {
+      "id": "tg:mininnovation",
+      "type": "telegram",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://t.me/s/innovatsion_rivojlanish",
+      "status": "OK",
+      "entries": 12,
+      "fresh_entries": 12,
+      "external_links": 41
+    },
+    {
+      "id": "tg:itpark",
+      "type": "telegram",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://t.me/s/itpark_uz",
+      "status": "OK",
+      "entries": 6,
+      "fresh_entries": 6,
+      "external_links": 35
+    },
+    {
+      "id": "tg:erasmus_uz",
+      "type": "telegram",
+      "kind": "official",
+      "enabled": true,
+      "url": "https://t.me/s/erasmus_uz",
+      "status": "OK",
+      "entries": 9,
+      "fresh_entries": 9,
+      "external_links": 39
+    },
+    {
+      "id": "tg:grantlar",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/grantlar",
+      "status": "OK",
+      "entries": 20,
+      "fresh_entries": 20,
+      "external_links": 23
+    },
+    {
+      "id": "tg:edugrandsuz",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/edugrandsuz",
+      "status": "OK",
+      "entries": 20,
+      "fresh_entries": 20,
+      "external_links": 22
+    },
+    {
+      "id": "tg:oliygoh",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/oliygoh_grantlar",
+      "status": "OK",
+      "entries": 17,
+      "fresh_entries": 17,
+      "external_links": 31
+    },
+    {
+      "id": "tg:grantgo",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/grantgouz",
+      "status": "OK",
+      "entries": 19,
+      "fresh_entries": 19,
+      "external_links": 29
+    },
+    {
+      "id": "tg:grantsuzb",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/grantsuzb",
+      "status": "OK",
+      "entries": 14,
+      "fresh_entries": 14,
+      "external_links": 56
+    },
+    {
+      "id": "tg:joinyouth",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/joinyouthuz",
+      "status": "OK",
+      "entries": 16,
+      "fresh_entries": 5,
+      "external_links": 7
+    },
+    {
+      "id": "tg:startupbaseuz",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/startupbaseuz",
+      "status": "OK",
+      "entries": 12,
+      "fresh_entries": 12,
+      "external_links": 44
+    },
+    {
+      "id": "tg:globalscholar",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/theglobalscholarship",
+      "status": "OK",
+      "entries": 20,
+      "fresh_entries": 1,
+      "external_links": 0
+    },
+    {
+      "id": "tg:scholarshipregion",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/scholarshipregion",
+      "status": "OK",
+      "entries": 20,
+      "fresh_entries": 20,
+      "external_links": 40
+    },
+    {
+      "id": "tg:scholarshipscorner",
+      "type": "telegram",
+      "kind": "aggregator",
+      "enabled": true,
+      "url": "https://t.me/s/scholarshipscorner",
+      "status": "OK",
+      "entries": 20,
+      "fresh_entries": 20,
+      "external_links": 20
+    }
+  ]
+}

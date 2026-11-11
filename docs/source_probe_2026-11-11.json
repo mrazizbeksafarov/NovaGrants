@@ -1,0 +1,324 @@
+[
+  {
+    "url": "https://opportunitiesforyouth.org/feed/",
+    "status": 403,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://scholarshipdb.net/rss",
+    "status": 403,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://scholarshipair.com/feed/",
+    "status": 403,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://opportunitiescircle.com/feed/",
+    "status": 200,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://greatyop.com/regions/uzbekistan/feed/",
+    "status": 200,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://greatyop.com/feed/",
+    "status": 200,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://scholarshiproar.com/feed/",
+    "status": 200,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://opportunitiescorners.com/feed/",
+    "status": 200,
+    "entries": 6,
+    "fresh": 6,
+    "samples": [
+      {
+        "title": "Dubai Government Free AI Course 2026 | One Million Prompters",
+        "link": "https://opportunitiescorners.com/one-million-prompters/",
+        "age_days": 0
+      },
+      {
+        "title": "Tsinghua Amgen Internship 2027 in China (Fully Funded)",
+        "link": "https://opportunitiescorners.com/tsinghua-amgen-internship-2027-in-china/",
+        "age_days": 0
+      }
+    ]
+  },
+  {
+    "url": "https://oyaop.com/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 10,
+    "samples": [
+      {
+        "title": "Hurford Youth Fellows Program 2027 in the USA (Fully Funded)",
+        "link": "https://oyaop.com/opportunity/scholarships-and-fellowships/hurford-youth-fellows-program-2027-in-the-usa-fully-funded/",
+        "age_days": 2
+      },
+      {
+        "title": "Winter Korean Culture Camp 2027 in South Korea (Fully Funded)",
+        "link": "https://oyaop.com/opportunity/exchange-programs/winter-korean-culture-camp-2027-in-south-korea-fully-funded/",
+        "age_days": 3
+      }
+    ]
+  },
+  {
+    "url": "https://opportunitydesk.org/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 10,
+    "samples": [
+      {
+        "title": "ANH Academy Science-Policy Fellowships 2027 (Round 3)",
+        "link": "https://opportunitydesk.org/2026/11/11/anh-academy-science-policy-fellowships-2027-round-3/",
+        "age_days": 0
+      },
+      {
+        "title": "Harvard Kennedy School (HKS) American Service Fellowship 2027 (up to $100,000)",
+        "link": "https://opportunitydesk.org/2026/11/11/harvard-kennedy-school-american-service-fellowship-2027/",
+        "age_days": 0
+      }
+    ]
+  },
+  {
+    "url": "https://grantlar.uz/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 10,
+    "samples": [
+      {
+        "title": "UTRIP: Bakalavrlar uchun Yaponiyaning Tokio universitetida haq toʻlanadigan yozgi amaliyot!",
+        "link": "https://grantlar.uz/utrip-amaliyot-dasturi/",
+        "age_days": 1
+      },
+      {
+        "title": "Hurford Youth Fellowship Program: AQSHda barcha xarajatlari qoplanadigan 4 oylik dastur!",
+        "link": "https://grantlar.uz/hurford-youth-fellowship-program-aqshda-barcha-xarajatlari-qoplanadigan-3-oylik-dastur/",
+        "age_days": 1
+      }
+    ]
+  },
+  {
+    "url": "https://scholarship-positions.com/feed/",
+    "error": "SSLError"
+  },
+  {
+    "url": "https://www.humboldt-foundation.de/en/rss.xml",
+    "status": 404,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://scholarshipscafe.com/feed/",
+    "status": 200,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://stipendiumhungaricum.hu/feed/",
+    "status": 200,
+    "entries": 2,
+    "fresh": 0,
+    "samples": [
+      {
+        "title": "This is a standard post",
+        "link": "https://stipendiumhungaricum.hu/2026/08/18/this-is-a-standard-post/",
+        "age_days": 85
+      },
+      {
+        "title": "Some veeery cool title",
+        "link": "https://stipendiumhungaricum.hu/2026/08/12/this-is-title/",
+        "age_days": 91
+      }
+    ]
+  },
+  {
+    "url": "https://www.ist.ac.at/en/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 0,
+    "samples": [
+      {
+        "title": "Laura Schmid Receives ISTA Alumni Award",
+        "link": "https://www.ist.ac.at/en/2026/08/17/laura-schmid-receives-ista-alumni-award/",
+        "age_days": 86
+      },
+      {
+        "title": "The Electric Pursuit",
+        "link": "https://www.ist.ac.at/en/2026/07/23/the-electric-pursuit/",
+        "age_days": 111
+      }
+    ]
+  },
+  {
+    "url": "https://scholarshipunion.com/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 10,
+    "samples": [
+      {
+        "title": "Arkansas Tech Scholarship 2027 in USA",
+        "link": "https://scholarshipunion.com/arkansas-tech-scholarship-2027-usa/",
+        "age_days": 0
+      },
+      {
+        "title": "SSRP Amgen Scholars Program 2027 in USA | Fully Funded",
+        "link": "https://scholarshipunion.com/ssrp-amgen-scholars-program-2027/",
+        "age_days": 0
+      }
+    ]
+  },
+  {
+    "url": "https://scholarshipscorner.website/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 10,
+    "samples": [
+      {
+        "title": "Humboldt Residency Program 2027 in Germany (Fully Funded)",
+        "link": "https://scholarshipscorner.website/humboldt-residency-program-germany/",
+        "age_days": 0
+      },
+      {
+        "title": "CERN Openlab Summer Student Program 2027, Switzerland | Fully Funded Internship",
+        "link": "https://scholarshipscorner.website/cern-openlab-summer-student-program/",
+        "age_days": 0
+      }
+    ]
+  },
+  {
+    "url": "https://scholarshipscorner.website/category/internships/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 10,
+    "samples": [
+      {
+        "title": "CERN Openlab Summer Student Program 2027, Switzerland | Fully Funded Internship",
+        "link": "https://scholarshipscorner.website/cern-openlab-summer-student-program/",
+        "age_days": 0
+      },
+      {
+        "title": "CERN Summer Student Program 2027 in Switzerland | Fully Funded",
+        "link": "https://scholarshipscorner.website/cern-summer-student-program/",
+        "age_days": 1
+      }
+    ]
+  },
+  {
+    "url": "https://www.scholarshipsads.com/feed/",
+    "status": 404,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.scholarshipbob.com/feed",
+    "status": 404,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://uz.usembassy.gov/feed/",
+    "status": 403,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.scholarshipdesk.com/feed/",
+    "status": 404,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.oead.at/en/news/rss.xml",
+    "status": 404,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.profellow.com/feed/",
+    "status": 200,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.opportunitiesforafrica.org/feed/",
+    "error": "ConnectionError"
+  },
+  {
+    "url": "https://www.youthop.com/feed/",
+    "status": 404,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.eastchance.com/rss/rss.xml",
+    "error": "ConnectionError"
+  },
+  {
+    "url": "https://youth.europa.eu/rss.xml",
+    "status": 429,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.scholars4dev.com/feed/",
+    "status": 200,
+    "entries": 10,
+    "fresh": 10,
+    "samples": [
+      {
+        "title": "Schwarzman Scholars Program at Tsinghua University",
+        "link": "https://www.scholars4dev.com/schwarzman-scholars-program-at-tsinghua-university/",
+        "age_days": 2
+      },
+      {
+        "title": "Rhodes Scholarships at Oxford University for International Students",
+        "link": "https://www.scholars4dev.com/rhodes-international-scholarships-at-oxford-university/",
+        "age_days": 2
+      }
+    ]
+  },
+  {
+    "url": "https://www.youthopportunitieshub.com/feed/",
+    "status": 200,
+    "entries": 0,
+    "fresh": 0,
+    "samples": []
+  },
+  {
+    "url": "https://www.mladiinfo.eu/feed/",
+    "error": "ConnectTimeout"
+  }
+]

@@ -1,0 +1,586 @@
+[
+  {
+    "url": "https://www.daad-scholarship.com/feed/",
+    "error": "SSLError"
+  },
+  {
+    "url": "https://www.sussex.ac.uk/study/fees-funding/undergraduate-scholarships/browse",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [],
+    "links": [
+      {
+        "text": "RSS feed for these results",
+        "url": "/study/fees-funding/undergraduate-scholarships/rss/?all"
+      },
+      {
+        "text": "Gazelle Twin Scholarship for Women in Music Technology (2026)",
+        "url": "/study/fees-funding/undergraduate-scholarships/view/1940-Gazelle-Twin-Scholarship-for-Women-in-Music-Technology"
+      },
+      {
+        "text": "Global Flourishing Scholarship (2027)",
+        "url": "/study/fees-funding/undergraduate-scholarships/view/1960-Global-Flourishing-Scholarship"
+      },
+      {
+        "text": "OptiGene Foundation Scholarship (2026)",
+        "url": "/study/fees-funding/undergraduate-scholarships/view/1988-OptiGene-Foundation-Scholarship"
+      },
+      {
+        "text": "Sussex Bursary (2026)",
+        "url": "/study/fees-funding/undergraduate-scholarships/view/1504-Sussex-Bursary"
+      },
+      {
+        "text": "Sussex IFY Progression Scholarship (2027)",
+        "url": "/study/fees-funding/undergraduate-scholarships/view/1969-Sussex-IFY-Progression-Scholarship"
+      },
+      {
+        "text": "Access Programme",
+        "url": "/study/access"
+      },
+      {
+        "text": "Fees and funding",
+        "url": "/study/fees-funding"
+      },
+      {
+        "text": "Living and accommodation costs",
+        "url": "/study/fees-funding/living-costs"
+      },
+      {
+        "text": "Undergraduate loans and funding",
+        "url": "/study/fees-funding/undergraduate-funding-loans"
+      },
+      {
+        "text": "Undergraduate scholarships",
+        "url": "/study/fees-funding/undergraduate-scholarships"
+      },
+      {
+        "text": "Masters loans and funding",
+        "url": "/study/fees-funding/masters-funding-loans"
+      },
+      {
+        "text": "Masters scholarships",
+        "url": "/study/fees-funding/masters-scholarships"
+      },
+      {
+        "text": "Student budgeting",
+        "url": "/study/fees-funding/student-budgeting"
+      },
+      {
+        "text": "Scholarship feedback, appeals and complaints",
+        "url": "/study/fees-funding/scholarship-feedback-appeals-complaints"
+      }
+    ]
+  },
+  {
+    "url": "https://www.sussex.ac.uk/study/fees-funding/masters-scholarships/browse",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [],
+    "links": [
+      {
+        "text": "RSS feed for these results",
+        "url": "/study/fees-funding/masters-scholarships/rss/?all"
+      },
+      {
+        "text": "search on the available opportunities",
+        "url": "/study/fees-funding/masters-scholarships/search/"
+      },
+      {
+        "text": "Global Flourishing Award (India) (2027)",
+        "url": "/study/fees-funding/masters-scholarships/view/1967-Global-Flourishing-Award-(India)"
+      },
+      {
+        "text": "Global Flourishing Scholarship (2027)",
+        "url": "/study/fees-funding/masters-scholarships/view/1959-Global-Flourishing-Scholarship"
+      },
+      {
+        "text": "Jan Metzger Scholarship in Advanced Artificial Intelligence MSc (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1793-Jan-Metzger-Scholarship-in-Advanced-Artificial-Intelligence-MSc"
+      },
+      {
+        "text": "Mandela Scholarship supported by FirstRand Empowerment Foundation (2027)",
+        "url": "/study/fees-funding/masters-scholarships/view/1989-Mandela-Scholarship-supported-by-FirstRand-Empowerment-Foundation"
+      },
+      {
+        "text": "Shan Vaswani Borgartz Scholarship in Media (2027)",
+        "url": "/study/fees-funding/masters-scholarships/view/1783-Shan-Vaswani-Borgartz-Scholarship-in-Media"
+      },
+      {
+        "text": "Sussex Alumni Scholarship (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1881-Sussex-Alumni-Scholarship"
+      },
+      {
+        "text": "Sussex Alumni Scholarship (2027)",
+        "url": "/study/fees-funding/masters-scholarships/view/1971-Sussex-Alumni-Scholarship"
+      },
+      {
+        "text": "Sussex Bangladesh Scholarship (Masters) (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1885-Sussex-Bangladesh-Scholarship-(Masters)"
+      },
+      {
+        "text": "Sussex Egypt Scholarship (Masters) (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1886-Sussex-Egypt-Scholarship-(Masters)"
+      },
+      {
+        "text": "Sussex India Scholarship (Masters) (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1873-Sussex-India-Scholarship-(Masters)"
+      },
+      {
+        "text": "Sussex MBA Leadership Scholarship (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1966-Sussex-MBA-Leadership-Scholarship"
+      },
+      {
+        "text": "Sussex Nepal Scholarship (Masters) (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1888-Sussex-Nepal-Scholarship-(Masters)"
+      },
+      {
+        "text": "Sussex Nigeria Scholarship (Masters) (2026)",
+        "url": "/study/fees-funding/masters-scholarships/view/1889-Sussex-Nigeria-Scholarship-(Masters)"
+      }
+    ]
+  },
+  {
+    "url": "https://scholarships365.info/feed/",
+    "status": 404,
+    "entries": 0,
+    "samples": []
+  },
+  {
+    "url": "https://scholarshipregion.com/feed/",
+    "status": 202,
+    "entries": 0,
+    "samples": []
+  },
+  {
+    "url": "https://scholarshipunion.com/feed/?paged=2",
+    "status": 200,
+    "entries": 10,
+    "samples": [
+      {
+        "title": "UBC PhD in Computer Science Program 2027 in Canada | Fully Funded",
+        "url": "https://scholarshipunion.com/ubc-phd-in-computer-science-program/",
+        "published": "Tue, 10 Nov 2026 12:26:23 +0000"
+      },
+      {
+        "title": "Women in Tech Programme 2026 in Western Balkans",
+        "url": "https://scholarshipunion.com/women-in-tech-programme-scholarship-2026/",
+        "published": "Tue, 10 Nov 2026 11:50:51 +0000"
+      }
+    ]
+  },
+  {
+    "url": "https://www.daad-uzbekistan.org/en/",
+    "error": "ConnectionError"
+  },
+  {
+    "url": "https://greatyop.com/",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [],
+    "links": [
+      {
+        "text": "Sophie Germain Scholarship in France, 2027-2028",
+        "url": "https://greatyop.com/sophie-germain-master-scholarship-france/"
+      },
+      {
+        "text": "ENS International Selection Scholarship to France, 2027-2028",
+        "url": "https://greatyop.com/ens-international-selection-scholarship/"
+      },
+      {
+        "text": "Erasmus Mundus Scholarship in Flood Risk Management",
+        "url": "https://greatyop.com/erasmus-mundus-scholarship-flood-risk-management/"
+      },
+      {
+        "text": "Polytechnic University of Milan Scholarships for Foreign Students",
+        "url": "https://greatyop.com/polytechnic-university-of-milan-scholarships/"
+      },
+      {
+        "text": "Special Scholarship Program at Kochi University of Technology",
+        "url": "https://greatyop.com/special-scholarship-program/"
+      },
+      {
+        "text": "University of Melbourne Scholarships for All 2026-2027",
+        "url": "https://greatyop.com/university-melbourne-scholarships/"
+      },
+      {
+        "text": "University of Twente Kipaji Scholarship for Foreign Students",
+        "url": "https://greatyop.com/university-twente-kipaji-scholarship/"
+      },
+      {
+        "text": "University of Twente Scholarship (UTS) For All, 2027-2028",
+        "url": "https://greatyop.com/university-twente-scholarship/"
+      },
+      {
+        "text": "Sophie Germain Scholarship in France, 2027-2028",
+        "url": "https://greatyop.com/sophie-germain-master-scholarship-france/"
+      },
+      {
+        "text": "Hansen Leadership Institute Program, 2027",
+        "url": "https://greatyop.com/hansen-leadership-institute/"
+      },
+      {
+        "text": "Russian Government Scholarship (Open Doors Scholarship)",
+        "url": "https://greatyop.com/russian-government-scholarship/"
+      },
+      {
+        "text": "FMI International PhD/MD-PhD Scholarship",
+        "url": "https://greatyop.com/fmi-international-scholarship/"
+      },
+      {
+        "text": "Amelia Earhart Fellowship of Zonta International, 2027",
+        "url": "https://greatyop.com/amelia-earhart-fellowship-zonta/"
+      },
+      {
+        "text": "Yenching Academy of Peking University Scholarships, 2027",
+        "url": "https://greatyop.com/yenching-academy-peking-university-scholarships/"
+      },
+      {
+        "text": "Helmut Veith Stipend in Computer Science, 2026-2027",
+        "url": "https://greatyop.com/helmut-veith-stipend-computer-science/"
+      }
+    ]
+  },
+  {
+    "url": "https://scholarshipscorner.website/feed/?paged=2",
+    "status": 200,
+    "entries": 10,
+    "samples": [
+      {
+        "title": "Stanford University Summer Fellowship in USA 2027 | Fully Funded",
+        "url": "https://scholarshipscorner.website/stanford-university-summer-fellowship/",
+        "published": "Sun, 08 Nov 2026 11:50:02 +0000"
+      },
+      {
+        "title": "Dubai Government Free AI Course with Free Certificate | One Million Prompters",
+        "url": "https://scholarshipscorner.website/dubai-government-free-ai-course-with-certificate/",
+        "published": "Sun, 08 Nov 2026 10:23:09 +0000"
+      }
+    ]
+  },
+  {
+    "url": "https://opportunitiespedia.com/feed/",
+    "status": 200,
+    "entries": 10,
+    "samples": [
+      {
+        "title": "ETH Student Summer Research Fellowship  in Switzerland 2027 (Fully Funded)",
+        "url": "https://opportunitiespedia.com/eth-student-summer-research-fellowship-2027/",
+        "published": "Tue, 03 Nov 2026 10:38:08 +0000"
+      },
+      {
+        "title": "NUS Amgen Scholars Program 2027 in Singapore (Fully Funded)",
+        "url": "https://opportunitiespedia.com/nus-amgen-scholars-program-2027/",
+        "published": "Tue, 03 Nov 2026 10:37:58 +0000"
+      }
+    ]
+  },
+  {
+    "url": "https://fullyscholarships.com/feed/",
+    "status": 200,
+    "entries": 10,
+    "samples": [
+      {
+        "title": "World Impact Forum 2027 in Portugal (Fully Funded)",
+        "url": "https://fullyscholarships.com/world-impact-forum-2027-portugal/",
+        "published": "Tue, 10 Nov 2026 17:35:29 +0000"
+      },
+      {
+        "title": "CERN Summer Student Program 2027 in Switzerland (Fully Funded)",
+        "url": "https://fullyscholarships.com/cern-summer-student-program-2027-in-switzerland/",
+        "published": "Tue, 10 Nov 2026 17:15:35 +0000"
+      }
+    ]
+  },
+  {
+    "url": "https://opportunitiescircle.com/",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [],
+    "links": []
+  },
+  {
+    "url": "https://stipendiumhungaricum.hu/news/",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [
+      "https://stipendiumhungaricum.hu/news/feed/"
+    ],
+    "links": [
+      {
+        "text": "Read More September 29, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/where-discipline-meets-dreams-a-ballerinas-journey-to-hungary/"
+      },
+      {
+        "text": "Read More September 10, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/find-your-community-with-the-sh-mentor-network-join-the-next-anh-webinar-on-18-september/"
+      },
+      {
+        "text": "Read More September 7, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/become-the-face-of-stipendium-hungaricum-share-your-student-life-in-hungary/"
+      },
+      {
+        "text": "Read More August 13, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/whats-coming-is-bigger-than-anything-youre-imagining-right-now-muees-moosa-on-finding-home-independence-and-his-own-way-forward/"
+      },
+      {
+        "text": "Read More July 14, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/notice-of-website-maintenance/"
+      },
+      {
+        "text": "Read More July 13, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/designing-possibilities-varissaras-journey-from-bangkok-to-boeing/"
+      },
+      {
+        "text": "Read More July 10, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/what-international-students-dont-tell-us-culture-shock-in-the-classroom-interview-with-dr-ildiko-rudnak-intercultural-communication-expert/"
+      },
+      {
+        "text": "Read More June 24, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/step-by-step-luiss-journey-from-sambizanga-to-a-hungarian-engineering-degree/"
+      },
+      {
+        "text": "Read More May 22, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/your-student-report-is-now-open-and-required/"
+      },
+      {
+        "text": "Read More May 18, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/not-every-denial-is-a-river-in-egypt-the-journey-of-shahd-ayman-mohamed-aly-gaafar-negm/"
+      },
+      {
+        "text": "Read More May 12, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/from-data-to-dinner-how-ai-is-changing-food-webinar-by-dr-ayaz-mukarram-shaikh/"
+      },
+      {
+        "text": "Read More May 8, 2026",
+        "url": "https://stipendiumhungaricum.hu/news/interview-with-eleonora-savic-a-stipendium-hungaricum-excellence-awardee/"
+      }
+    ]
+  },
+  {
+    "url": "https://www.humboldt-foundation.de/en/apply/sponsorship-programmes",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [],
+    "links": [
+      {
+        "text": "Alexander von Humboldt Professorship",
+        "url": "/en/apply/sponsorship-programmes/alexander-von-humboldt-professorship"
+      },
+      {
+        "text": "Humboldtian Nobel laureates",
+        "url": "/en/connect/humboldtian-and-nobel-laureate"
+      },
+      {
+        "text": "AI and Us – what artificial intelligence means for our lives",
+        "url": "/en/explore/newsroom/ai-and-us-what-artificial-intelligence-means-for-our-lives"
+      },
+      {
+        "text": "Programme search",
+        "url": "/en/apply/sponsorship-programmes/programme-search"
+      },
+      {
+        "text": "The Humboldt Research Fellowship for researchers of all nationalities and research areas: We su",
+        "url": "/en/apply/sponsorship-programmes/humboldt-research-fellowship"
+      }
+    ]
+  },
+  {
+    "url": "https://www.scholars4dev.com/feed/?paged=2",
+    "status": 200,
+    "entries": 10,
+    "samples": [
+      {
+        "title": "Top 15+ Study Abroad Scholarships for US Citizens",
+        "url": "https://www.scholars4dev.com/top-scholarships-for-usa-citizens-study-abroad/",
+        "published": "Mon, 09 Nov 2026 12:32:00 +0000"
+      },
+      {
+        "title": "Top 10 International Scholarships for African Students",
+        "url": "https://www.scholars4dev.com/top-international-scholarships-for-african-students/",
+        "published": "Mon, 09 Nov 2026 12:30:00 +0000"
+      }
+    ]
+  },
+  {
+    "url": "https://scholarshipunion.com/",
+    "status": 403,
+    "entries": 0,
+    "samples": []
+  },
+  {
+    "url": "https://scholarshiproar.com/",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [
+      "https://scholarshiproar.com/feed/",
+      "https://scholarshiproar.com/comments/feed/"
+    ],
+    "links": [
+      {
+        "text": "Fulbright Scholarship 2027 | USA | Application Process",
+        "url": "https://scholarshiproar.com/fulbright-scholarship/"
+      },
+      {
+        "text": "KAIST University Scholarship 2027 (Fully Funded)",
+        "url": "https://scholarshiproar.com/kaist-university-scholarship/"
+      },
+      {
+        "text": "Commonwealth Scholarship 2027 | Application Process | Fully Funded",
+        "url": "https://scholarshiproar.com/commonwealth-scholarship/"
+      },
+      {
+        "text": "How to write a Motivation Letter for Scholarship (5 Examples)",
+        "url": "https://scholarshiproar.com/scholarship-motivation-letter/"
+      },
+      {
+        "text": "Study in the USA Without SAT 2027 | Test-Optional Universities for International Students",
+        "url": "https://scholarshiproar.com/study-in-usa-without-sat/"
+      },
+      {
+        "text": "Scholarships Without IELTS 2027 for International Students (Fully Funded)",
+        "url": "https://scholarshiproar.com/scholarships-without-ielts/"
+      },
+      {
+        "text": "Fully Funded Scholarships for Nigerian Students 2027",
+        "url": "https://scholarshiproar.com/fully-funded-scholarships-for-nigerian-students/"
+      },
+      {
+        "text": "USA Scholarships for International Students 2027",
+        "url": "https://scholarshiproar.com/usa-scholarships/"
+      },
+      {
+        "text": "Fully Funded Scholarships in Norway 2027 (For International Students)",
+        "url": "https://scholarshiproar.com/scholarships-in-norway/"
+      },
+      {
+        "text": "American University of Sharjah Scholarship 2027",
+        "url": "https://scholarshiproar.com/american-university-of-sharjah-scholarship/"
+      },
+      {
+        "text": "Rotary Peace Fellowships 2028 | Fully Funded",
+        "url": "https://scholarshiproar.com/rotary-peace-fellowships/"
+      },
+      {
+        "text": "King Abdullah University Scholarship 2027 (Fully Funded)",
+        "url": "https://scholarshiproar.com/king-abdullah-university-scholarship/"
+      },
+      {
+        "text": "RAVE Scholarship 2027 (Fully Funded) | Study in Germany",
+        "url": "https://scholarshiproar.com/rave-scholarship/"
+      },
+      {
+        "text": "Rhodes Scholarship 2027 | University of Oxford (Fully Funded)",
+        "url": "https://scholarshiproar.com/rhodes-global-scholarships/"
+      },
+      {
+        "text": "KOICA Scholarship Program 2027 (Fully Funded) | South Korea",
+        "url": "https://scholarshiproar.com/koica-scholarship-program/"
+      }
+    ]
+  },
+  {
+    "url": "https://youthbreaktheboundaries.com/feed/",
+    "status": 200,
+    "entries": 10,
+    "samples": [
+      {
+        "title": "Commonwealth Shared Scholarship 2027–2028: Fully Funded Master’s Scholarship in the UK",
+        "url": "https://youthbreaktheboundaries.com/commonwealth-shared-scholarship-2027-2028-fully-funded-masters-scholarship-in-the-uk/",
+        "published": "Wed, 11 Nov 2026 10:13:20 +0000"
+      },
+      {
+        "title": "Lingnan University Hong Kong PhD Fellowship Scheme 2027–2028",
+        "url": "https://youthbreaktheboundaries.com/lingnan-university-hong-kong-phd-fellowship-scheme-2027-2028/",
+        "published": "Wed, 11 Nov 2026 02:16:30 +0000"
+      }
+    ]
+  },
+  {
+    "url": "https://scholarshipscorner.website/",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [],
+    "links": [
+      {
+        "text": "Humboldt Residency Program 2027 in Germany (Fully Funded)",
+        "url": "https://scholarshipscorner.website/humboldt-residency-program-germany/"
+      },
+      {
+        "text": "November 11, 2026",
+        "url": "https://scholarshipscorner.website/2026/11/11/"
+      },
+      {
+        "text": "CERN Openlab Summer Student Program 2027, Switzerland | Fully Funded Internship",
+        "url": "https://scholarshipscorner.website/cern-openlab-summer-student-program/"
+      },
+      {
+        "text": "November 11, 2026",
+        "url": "https://scholarshipscorner.website/2026/11/11/"
+      },
+      {
+        "text": "London Youth Diplomacy Forum 2027 in UK | 40 Fully Funded Seats",
+        "url": "https://scholarshipscorner.website/london-youth-diplomacy-forum-2027/"
+      },
+      {
+        "text": "November 11, 2026",
+        "url": "https://scholarshipscorner.website/2026/11/11/"
+      },
+      {
+        "text": "Rockefeller University Summer Fellowship 2027 in USA | Funded",
+        "url": "https://scholarshipscorner.website/rockefeller-university-summer-fellowship/"
+      },
+      {
+        "text": "November 11, 2026",
+        "url": "https://scholarshipscorner.website/2026/11/11/"
+      },
+      {
+        "text": "University of Twente Scholarship 2027 in the Netherlands (Study in Netherlands)",
+        "url": "https://scholarshipscorner.website/university-of-twente-scholarship/"
+      },
+      {
+        "text": "November 10, 2026",
+        "url": "https://scholarshipscorner.website/2026/11/10/"
+      },
+      {
+        "text": "CERN Summer Student Program 2027 in Switzerland | Fully Funded",
+        "url": "https://scholarshipscorner.website/cern-summer-student-program/"
+      },
+      {
+        "text": "November 10, 2026",
+        "url": "https://scholarshipscorner.website/2026/11/10/"
+      },
+      {
+        "text": "RIKEN CBS Summer Program 2027 in Japan (Travel & Accommodation Funded)",
+        "url": "https://scholarshipscorner.website/riken-cbs-summer-program-japan/"
+      },
+      {
+        "text": "MCW Young Leaders Fellowship 2027 in USA | Fully Funded | MCW Global Fellowship",
+        "url": "https://scholarshipscorner.website/mcw-young-leaders-fellowship/"
+      },
+      {
+        "text": "Commonwealth Shared Scholarships 2027-28 in the UK | Fully Funded",
+        "url": "https://scholarshipscorner.website/commonwealth-shared-scholarships/"
+      }
+    ]
+  },
+  {
+    "url": "https://admissions.oist.jp/oist-research-internship-program-description",
+    "status": 200,
+    "entries": 0,
+    "samples": [],
+    "feed_links": [],
+    "links": []
+  },
+  {
+    "url": "https://www.chevening.org/scholarship/uzbekistan/",
+    "error": "ReadTimeout"
+  }
+]

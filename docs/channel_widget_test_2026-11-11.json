@@ -1,0 +1,10 @@
+{
+  "checked_at": "2026-11-11T17:29:30.135326+00:00",
+  "method": "sendWidget",
+  "channel": "@Nova_Grants",
+  "requested_delete_after_seconds": 5,
+  "send_ok": false,
+  "error_code": 400,
+  "description": "Bad Request: INPUT_MEDIA_WIDGET_NOT_ALLOWED",
+  "delete_needed": false
+}

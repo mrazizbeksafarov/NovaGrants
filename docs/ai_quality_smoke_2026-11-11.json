@@ -1,0 +1,58 @@
+{
+  "checked_at": "2026-11-11T16:28:14.391280+00:00",
+  "sample_size": 2,
+  "results": [
+    {
+      "thinking_level": "low",
+      "seconds": 89.33,
+      "status": "failed",
+      "model": "gemini-3.8-flash"
+    },
+    {
+      "thinking_level": "high",
+      "seconds": 88.55,
+      "status": "failed",
+      "model": "gemini-3.8-flash"
+    },
+    {
+      "thinking_level": "low",
+      "model": "gemini-3.5-flash",
+      "seconds": 4.45,
+      "status": "failed"
+    },
+    {
+      "thinking_level": "low",
+      "model": "gemini-2.5-flash",
+      "seconds": 2.61,
+      "status": "valid",
+      "selected_indexes": [
+        1
+      ],
+      "expected_indexes": [
+        1
+      ],
+      "matches_expected": true,
+      "usage": {
+        "model": "gemini-2.5-flash",
+        "prompt": 1891,
+        "output": 297,
+        "total": 2188
+      },
+      "cards": [
+        {
+          "index": 1,
+          "name": "Global Flourishing Scholarship (2027)",
+          "summary": "Bu magistratura stipendiyasi Sussex universitetida 2027-yil sentabr yoki 2028-yil yanvar oyida o'qishni boshlaydigan talabalar uchun mo'ljallangan bo'lib, o'qish to'lovlariga chegirma beradi.",
+          "benefits": [
+            "O'qish to'lovlarining birinchi yiliga \n5,000 funt sterling chegirma"
+          ],
+          "eligibility": "Bangladesh, Misr, Indoneziya, Qozog'iston, Keniya, Malayziya, Nepal, Nigeriya, Pokiston, Shri-Lanka, Tailand, Turkiya, O'zbekiston yoki Vetnam fuqarolari bo'lishi va o'qish to'lovlari uchun 'Overseas' deb tasniflangan bo'lishi kerak.",
+          "eligibility_evidence": "Be a national of Bangladesh, Egypt, Indonesia, Kazakhstan, Kenya, Malaysia, Nepal, Nigeria, Pakistan, Sri Lanka, Thailand, Türkiye, Uzbekistan or Vietnam",
+          "deadline_iso": "2027-09-01T23:59:00Z",
+          "url": "https://www.sussex.ac.uk/study/fees-funding/masters-scholarships/view/1959-Global-Flourishing-Scholarship"
+        }
+      ]
+    }
+  ],
+  "rechecked_at": "2026-11-11T16:33:12.928600+00:00"
+}

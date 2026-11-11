@@ -9,8 +9,8 @@ Bosqichlar:
   6. POST        — AI matn yozadi, kanalga chiqadi (ai_agent.py, telegram_bot.py)
   7. ESLATMA     — muddati yaqinlashganlar haqida (yagona ruxsat etilgan takror)
 
-Asosiy kafolat: kanalga FAQAT asl havola tushadi. Asl havola topilmagan yozuv
-post qilinmaydi — bazaga "skipped" deb yoziladi va qayta urinilmaydi.
+Asosiy kafolat: kanalga FAQAT asl havola tushadi. Vaqtinchalik xatolar
+doimiy rad etish bilan aralashtirilmaydi — yozuv keyingi yurishda qayta ko'riladi.
 """
 
 import os
@@ -26,15 +26,15 @@ from filters import (
 from link_resolver import resolve_grant, is_aggregator, is_blocked
 from database import (
     init_db, get_seen_source_keys, get_seen_url_keys, get_seen_fingerprints,
+    get_seen_fingerprint_scopes,
     save_grant as _save_grant, save_grants_batch as _save_grants_batch,
     get_grants_nearing_deadline, mark_reminder_sent as _mark_reminder_sent, stats,
 )
 from ai_agent import generate_post_content, BATCH_SIZE
-from post_builder import build_post
+from post_builder import build_post, usable_cards
 from telegram_bot import (
     send_telegram_message as _send_telegram_message,
     publish as _publish,
-    validate_rich_blocks,
     notify_admin,
 )
 
@@ -49,6 +49,15 @@ DRY_RUN = os.getenv("DRY_RUN") == "1" or "--dry-run" in sys.argv
 
 def log(msg=""):
     print(msg, flush=True)
+
+
+def candidate_quality(grant):
+    """Prefer the most informative account when sources describe one programme."""
+    import re
+    summary = str(grant.get("summary") or "")
+    eligibility = bool(re.search(r"uzbek|o.zbekiston|all nationalities|all countries|worldwide", summary, re.I))
+    return (eligibility, bool(grant.get("deadline_iso")),
+            grant.get("kind") == "official", min(len(summary), 1800))
 
 
 # Baza sxemasi tayyormi (quruq sinovda tayyor bo'lmasligi mumkin)
@@ -97,10 +106,7 @@ def send_telegram_message(text):
 
 def publish_post(blocks, html):
     if DRY_RUN:
-        from telegram_bot import html_to_plain
-        ok, detail = validate_rich_blocks(blocks, html_to_plain(html))
-        mark = "✅ tuzilma yaroqli" if ok else f"❌ XATO: {detail[:70]}"
-        log(f"\n┌─ QURUQ SINOV — {len(blocks)} ta rich blok, tuzilma tekshiruvi: {mark}")
+        log(f"\n┌─ QURUQ SINOV — {len(blocks)} ta rich blok (Telegram so'rovisiz)")
         log("│  HTML ko'rinishi (zaxira):")
         for line in html.split("\n"):
             log(f"│ {line}")
@@ -177,7 +183,7 @@ def send_reminders():
     if publish_post(blocks, "\n".join(html)):
         for g in valid:
             mark_reminder_sent(g.get("url", ""))
-        log(f"   {len(valid)} ta eslatma yuborildi.")
+        log(f"   {len(valid)} ta eslatma " + ("tayyorlandi (quruq sinov)." if DRY_RUN else "yuborildi."))
     else:
         log("   Eslatma yuborilmadi — keyingi safar qayta urinamiz.")
 
@@ -189,8 +195,7 @@ def collect_candidates():
     """Yig'ish → saralash → eskilarini tashlash."""
     raw = fetch_all()
     if not raw:
-        log("Hech qanday ma'lumot yig'ilmadi.")
-        return []
+        raise RuntimeError("Hech bir manbadan ma'lumot yig'ilmadi — manbalarni tekshiring")
 
     # 2-bosqich: mavzu bo'yicha saralash
     relevant = []
@@ -214,7 +219,19 @@ def collect_candidates():
 
 def resolve_links(items):
     """4-bosqich: asl havolalarni qazib olish."""
-    batch = items[:MAX_RESOLVE_PER_RUN]
+    # Round-robin across sources so one failing feed cannot fill the entire budget.
+    from collections import defaultdict, deque
+    queues = defaultdict(deque)
+    for item in items:
+        queues[item.get("source_id", "unknown")].append(item)
+    batch = []
+    while queues and len(batch) < MAX_RESOLVE_PER_RUN:
+        for source in list(queues):
+            batch.append(queues[source].popleft())
+            if not queues[source]:
+                del queues[source]
+            if len(batch) == MAX_RESOLVE_PER_RUN:
+                break
     if len(items) > MAX_RESOLVE_PER_RUN:
         log(f"── Diqqat: {len(items)} tadan faqat {MAX_RESOLVE_PER_RUN} tasi qayta ishlanadi, "
             f"qolgan {len(items) - MAX_RESOLVE_PER_RUN} tasi keyingi yurishga qoladi.")
@@ -230,57 +247,83 @@ def resolve_links(items):
 
     log(f"── Asl havola topildi: {len(ok)}/{len(resolved)} ta ({time.time() - started:.0f}s)")
 
-    # Topilmaganlarni belgilab qo'yamiz — ertaga qayta urinmaslik uchun
+    # Failure may be a timeout/429. Do not permanently hide these source keys.
     if failed:
-        save_grants_batch([{"grant": g, "status": "skipped"} for g in failed])
+        log(f"── Havolasi topilmagan {len(failed)} ta yozuv qayta urinish uchun qoldi.")
 
     return ok
 
 
 def deduplicate(items):
-    """5-bosqich: asl havola, semantik slug va sarlavha izi bo'yicha takrorlarni tashlash."""
+    """5-bosqich: asl havola, kanonik kalit, semantik slug va barmoq izi bo'yicha takrorlarni tashlash."""
     from database import make_semantic_slug, get_seen_semantic_slugs
-    from link_resolver import host_of, is_aggregator
+    from link_resolver import host_of, root_domain, is_aggregator, is_blocked, canonical_url_key, program_fingerprint
 
-    # Har bir grant uchun semantik slug tayyorlaymiz va agregatorlarni suzamiz
+    # Har bir grant uchun semantik slug va kanonik kalit tayyorlaymiz, agregatorlarni suzamiz
     clean_items = []
-    for g in items:
+    for g in sorted(items, key=candidate_quality, reverse=True):
         u = g.get("url", "")
-        if not u or is_aggregator(u):
+        if not u or is_aggregator(u) or is_blocked(u):
             continue
+        title = g.get("title", "")
+        if not g.get("canonical_url_key"):
+            g["canonical_url_key"] = canonical_url_key(u, title)
+        if not g.get("program_fingerprint"):
+            g["program_fingerprint"] = program_fingerprint(title, u)
         if not g.get("semantic_slug"):
-            g["semantic_slug"] = make_semantic_slug(g.get("title", ""), host_of(u), g.get("deadline_iso"))
+            g["semantic_slug"] = make_semantic_slug(title, host_of(u), g.get("deadline_iso"), u)
         clean_items.append(g)
 
     items = clean_items
-    seen_urls = seen_url_keys([g["url_key"] for g in items])
-    seen_fps = seen_fingerprints([g["fingerprint"] for g in items if g.get("fingerprint")])
+    url_queries = [g["url_key"] for g in items if g.get("url_key")] + [g["canonical_url_key"] for g in items if g.get("canonical_url_key")]
+    seen_urls = seen_url_keys(url_queries)
+    seen_fps = get_seen_fingerprint_scopes([g["fingerprint"] for g in items if g.get("fingerprint")]) if DB_READY else set()
     seen_slugs = get_seen_semantic_slugs([g["semantic_slug"] for g in items if g.get("semantic_slug")]) if DB_READY else set()
 
-    unique, batch_urls, batch_fps, batch_slugs = [], set(), set(), set()
-    dropped_db, dropped_batch = 0, 0
-    duplicates_to_save = []
+    # Group connected identities before choosing representatives. A later
+    # bridging article can connect two earlier records; a greedy set misses it.
+    parents = list(range(len(items)))
+    def root(i):
+        while parents[i] != i:
+            parents[i] = parents[parents[i]]
+            i = parents[i]
+        return i
+    owners = {}
+    for i, g in enumerate(items):
+        domain = root_domain(host_of(g["url"]))
+        identities = [
+            ("url", g.get("url_key")), ("url", g.get("canonical_url_key")),
+            ("title", (g.get("fingerprint"), domain) if g.get("fingerprint") else None),
+            ("program", g.get("program_fingerprint")), ("slug", g.get("semantic_slug")),
+        ]
+        for kind, identity in identities:
+            if not identity:
+                continue
+            key = (kind, identity)
+            if key in owners:
+                parents[root(i)] = root(owners[key])
+            else:
+                owners[key] = i
+    groups = {}
+    for i, g in enumerate(items):
+        groups.setdefault(root(i), []).append(g)
 
-    for g in items:
-        uk = g.get("url_key", "")
-        fp = g.get("fingerprint", "")
-        slug = g.get("semantic_slug", "")
-
-        if uk in seen_urls or (fp and fp in seen_fps) or (slug and slug in seen_slugs):
-            dropped_db += 1
-            duplicates_to_save.append({"grant": g, "status": "duplicate", "key": g.get("source_key")})
+    unique, duplicates_to_save = [], []
+    dropped_db = dropped_batch = 0
+    for group in groups.values():
+        in_database = any(
+            g.get("url_key") in seen_urls or g.get("canonical_url_key") in seen_urls
+            or (g.get("fingerprint"), root_domain(host_of(g["url"]))) in seen_fps
+            or g.get("semantic_slug") in seen_slugs
+            for g in group)
+        if in_database:
+            dropped_db += len(group)
+            duplicates_to_save.extend({"grant": g, "status": "duplicate", "key": g.get("source_key")} for g in group)
             continue
-
-        if uk in batch_urls or (fp and fp in batch_fps) or (slug and slug in batch_slugs):
-            dropped_batch += 1
-            continue
-
-        batch_urls.add(uk)
-        if fp:
-            batch_fps.add(fp)
-        if slug:
-            batch_slugs.add(slug)
-        unique.append(g)
+        winner = group[0]  # already ordered by evidence quality
+        winner["_aliases"] = group[1:]
+        unique.append(winner)
+        dropped_batch += len(group) - 1
 
     if duplicates_to_save:
         save_grants_batch(duplicates_to_save)
@@ -319,7 +362,10 @@ def publish(items):
 
         content = generate_post_content(batch)
 
-        if not content or not content.get("cards"):
+        if content is None:
+            raise RuntimeError("AI javobi olinmadi — grantlar keyingi yurishga qoldirildi")
+
+        if not content.get("cards"):
             log("   AI bu to'plamdan mos imkoniyat topmadi.")
             save_grants_batch([{"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"} for g in batch])
             continue
@@ -329,12 +375,15 @@ def publish(items):
             tokens += usage.get("total", 0)
             log(f"   {usage.get('model')} | {usage.get('total')} token")
 
-        cards = content["cards"]
-        blocks, html = build_post(content.get("headline", ""), cards)
+        cards = usable_cards(content["cards"])
+        if not cards:
+            raise RuntimeError("AI kartochkalari yaroqsiz — grantlar saqlanmagan holda qoldirildi")
+        # A mixed digest can contain partial awards. Do not let an AI headline
+        # claim that every opportunity is fully funded or has one eligibility.
+        blocks, html = build_post(f"{len(cards)} ta yangi xalqaro imkoniyat", cards)
 
         if not publish_post(blocks, html):
-            log("   Xabar yuborilmadi — bu to'plam keyingi safar qayta urinib ko'riladi.")
-            continue
+            raise RuntimeError("Telegram xabari to'liq yuborilmadi — Actions logini tekshiring")
 
         # AI tanlagan imkoniyatlar — "posted", tanlanmaganlari — "skipped".
         # Ikkalasi ham bazaga tushadi, shunda ertaga qayta ishlanmaydi.
@@ -348,12 +397,15 @@ def publish(items):
                 deadline = (validate_deadline_iso(card.get("deadline_iso"))
                             or g.get("deadline_iso"))
                 batch_saves.append({"grant": g, "deadline_iso": deadline, "status": "posted"})
+                for alias in g.get("_aliases", []):
+                    batch_saves.append({"grant": alias, "status": "duplicate", "key": alias.get("source_key")})
                 posted += 1
             else:
                 batch_saves.append({"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"})
 
         save_grants_batch(batch_saves)
-        log(f"   ✅ {len(chosen)} ta post qilindi, {len(batch) - len(chosen)} tasi rad etildi.")
+        action = "tayyorlandi (yuborilmadi)" if DRY_RUN else "post qilindi"
+        log(f"   ✅ {len(chosen)} ta {action}, {len(batch) - len(chosen)} tasi rad etildi.")
 
     if tokens:
         log(f"── Jami sarflangan token: {tokens}")
@@ -377,13 +429,13 @@ def run():
     log()
 
     # Avval eslatmalar (bu yagona ruxsat etilgan takror)
-    send_reminders()
+    if DB_READY:
+        send_reminders()
     log()
 
     candidates = collect_candidates()
     if not candidates:
-        log("\nYangi imkoniyat yo'q. Vazifa yakunlandi.")
-        return
+        log("\nYangi imkoniyat yo'q.")
 
     resolved = resolve_links(candidates)
     if candidates and len(resolved) < len(candidates[:MAX_RESOLVE_PER_RUN]) * 0.35:
@@ -397,17 +449,19 @@ def run():
         problems.append(f"{len(leaked)} ta aggregator havolasi filtrdan o'tib ketdi")
         resolved = [g for g in resolved if not is_aggregator(g["url"])]
 
-    unique = deduplicate(resolved)
-    unique = enrich_deadlines(unique)
+    unique = deduplicate(enrich_deadlines(resolved))
 
     posted = publish(unique)
     if unique and not posted:
         problems.append(f"{len(unique)} ta nomzod bor edi, lekin hech biri post qilinmadi")
 
-    elapsed = (datetime.now(timezone.utc) - started).seconds
+    elapsed = int((datetime.now(timezone.utc) - started).total_seconds())
     log()
     log("=" * 66)
-    log(f"Yakunlandi: {posted} ta yangi imkoniyat kanalga chiqdi ({elapsed}s)")
+    if DRY_RUN:
+        log(f"Quruq sinov yakunlandi: {posted} ta kartochka tayyorlandi, yuborilmadi ({elapsed}s)")
+    else:
+        log(f"Yakunlandi: {posted} ta yangi imkoniyat kanalga chiqdi ({elapsed}s)")
     log("=" * 66)
 
     if not DRY_RUN:
@@ -429,4 +483,10 @@ def run():
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
-    run()
+    try:
+        run()
+    except Exception as exc:
+        if not DRY_RUN:
+            notify_admin(f"⚠️ <b>Nova Grants to'xtadi</b>\nXato turi: {type(exc).__name__}. "
+                         "GitHub Actions logini tekshiring; saqlanmagan to'plam qayta ko'riladi.")
+        raise

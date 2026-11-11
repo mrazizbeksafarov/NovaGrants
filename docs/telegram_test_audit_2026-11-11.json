@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-11-11T16:39:39.596458+00:00",
+  "bot_username": "grantbasebot",
+  "destination_type": "private",
+  "sendMessage_accepted": true,
+  "sendWidget_accepted": true,
+  "sendRichMessage_accepted": true,
+  "revised_rich_without_duplicate_link_accepted": true,
+  "revised_rich_without_copy_action_accepted": true,
+  "user_screenshots_confirm_rendering": true,
+  "channel_forwarding_protected": false,
+  "public_channel_test_messages_sent": false,
+  "widget_forwarding_supported_in_production": false,
+  "share_policy": "Telegram native Forward; no custom share-url button"
+}

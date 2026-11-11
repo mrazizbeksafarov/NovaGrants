@@ -28,8 +28,11 @@ Shuning uchun maydon nomlari faqat hujjatdan olinadi.
 """
 
 import re
+from datetime import datetime, timezone
+from rich_schema import valid_web_url
 
 CHANNEL_TAG = "@Nova_Grants"
+BRAND_LABEL = "NOVA GRANTS"
 CTA = "Ariza topshirish va batafsil ma'lumot"
 
 
@@ -89,7 +92,7 @@ def usable_cards(cards: list) -> list:
     for card in cards or []:
         name = _clean(card.get("name"), 140)
         url = str(card.get("url") or "").strip()
-        if not name or not url.lower().startswith(("http://", "https://")):
+        if not name or not valid_web_url(url):
             continue
         if url in seen:
             continue
@@ -101,16 +104,37 @@ def usable_cards(cards: list) -> list:
 def build_rich_blocks(headline: str, cards: list) -> list:
     """Tuzilgan kartochkalardan rich message bloklarini quradi."""
     blocks = []
+    cards = usable_cards(cards)
+    if cards:
+        blocks.append({"type": "photo", "photo": {"type": "photo", "media": "attach://nova_cover"}})
 
     if headline:
         blocks.append({"type": "heading", "size": 2, "text": _clean(headline, 120)})
         blocks.append({"type": "divider"})
 
-    for card in usable_cards(cards):
+    if len(cards) >= 3:
+        def cell(text, header=False):
+            return {"text": text, "align": "left", "valign": "middle", **({"is_header": True} if header else {})}
+        rows = [[cell("Dastur", True), cell("Muddat", True)]]
+        for i, card in enumerate(cards, 1):
+            rows.append([cell({"type": "anchor_link", "text": _clean(card.get("name"), 65), "anchor_name": f"grant-{i}"}),
+                         cell(_deadline_label(card.get("deadline_iso")) or "Ko'rsatilmagan")])
+        blocks.append({"type": "details", "summary": f"Dasturlar ro'yxati · {len(cards)}",
+                       "blocks": [{"type": "table", "cells": rows, "is_compact": True, "is_striped": True}]})
+
+    for i, card in enumerate(cards, 1):
         name = _clean(card.get("name"), 140)
         url = card.get("url", "")
 
-        blocks.append({"type": "heading", "size": 3, "text": name})
+        if len(cards) >= 3:
+            blocks.append({"type": "anchor", "name": f"grant-{i}"})
+        display_name = f"{i:02d} · {name}" if len(cards) > 1 else name
+        blocks.append({"type": "heading", "size": 3, "text": display_name})
+
+        benefits = [b for b in (card.get("benefits") or []) if str(b).strip()][:5]
+        if benefits:
+            blocks.append({"type": "blockquote", "blocks": [
+                {"type": "paragraph", "text": {"type": "bold", "text": _clean(benefits[0], 160)}}]})
 
         summary = _clean(card.get("summary"), 300)
         if summary:
@@ -118,33 +142,47 @@ def build_rich_blocks(headline: str, cards: list) -> list:
 
         # Yig'iladigan bo'lim: tafsilotlar postni cho'zmasin
         inner = []
-        benefits = [b for b in (card.get("benefits") or []) if str(b).strip()][:5]
-        if benefits:
+        if len(benefits) > 1:
             # Har bir list elementi InputRichBlockListItem: ichida `blocks` bo'ladi
             inner.append({"type": "list", "items": [
                 {"blocks": [{"type": "paragraph", "text": _clean(b, 160)}]}
-                for b in benefits
+                for b in benefits[1:]
             ]})
 
-        eligibility = _clean(card.get("eligibility"), 240)
+        eligibility = re.sub(r"\s+", " ", str(card.get("eligibility") or "")).strip()
         if eligibility:
             inner.append({"type": "paragraph",
                           "text": [{"type": "bold", "text": "Kimlar uchun: "}, eligibility]})
-
-        deadline = _deadline_label(card.get("deadline_iso"))
-        if deadline:
-            inner.append({"type": "paragraph",
-                          "text": [{"type": "bold", "text": "Oxirgi muddat: "}, deadline]})
 
         if inner:
             # `summary` majburiy (hujjatda Optional emas) — `header` degan maydon yo'q.
             # `is_open` turi hujjatda "True", ya'ni faqat True uzatiladi. Bizga
             # yig'ilgan holat kerak, shuning uchun maydonni umuman qo'shmaymiz.
-            blocks.append({"type": "details", "summary": "To'liq ma'lumot",
+            blocks.append({"type": "details", "summary": "Dastur shartlari",
                            "blocks": inner})
 
-        blocks.append({"type": "paragraph",
-                       "text": [{"type": "url", "url": url, "text": CTA}]})
+        # The deadline stays visible even while the long details are collapsed.
+        deadline = _deadline_label(card.get("deadline_iso"))
+        if deadline:
+            value = str(card["deadline_iso"])
+            try:
+                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                deadline_text = {"type": "date_time", "text": deadline,
+                                 "unix_time": int(dt.timestamp()), "date_time_format": "r"}
+            except ValueError:
+                deadline_text = deadline
+            deadline_line = [{"type": "bold", "text": "Muddat: "}, deadline]
+            if isinstance(deadline_text, dict):
+                deadline_line.extend([" · ", deadline_text])
+            blocks.append({"type": "paragraph", "text": deadline_line})
+        else:
+            blocks.append({"type": "footer", "text": "Muddat ko'rsatilmagan"})
+
+        # One native application action; do not encourage copying or duplicate links.
+        buttons = [{"text": "Ariza va tafsilotlar", "style": "primary", "url": url}]
+        blocks.append({"type": "buttons", "buttons": buttons})
         blocks.append({"type": "divider"})
 
     if blocks and blocks[-1].get("type") == "divider":
@@ -162,35 +200,45 @@ def build_rich_blocks(headline: str, cards: list) -> list:
 def build_html(headline: str, cards: list) -> str:
     """Xuddi shu ma'lumotdan oddiy HTML post. Rich message ishlamasa ishlatiladi."""
     parts = []
+    cards = usable_cards(cards)
+    if cards:
+        parts.append(f"<b>{BRAND_LABEL}</b>\n")
 
     if headline:
         parts.append(f"<b>{_esc(_clean(headline, 120))}</b>\n")
 
-    for card in usable_cards(cards):
+    for i, card in enumerate(cards, 1):
         name = _clean(card.get("name"), 140)
         url = card.get("url", "")
 
-        parts.append(f"<b>{_esc(name)}</b>")
+        display_name = f"{i:02d} · {name}" if len(cards) > 1 else name
+        parts.append(f"<b>{_esc(display_name)}</b>")
+
+        benefits = [b for b in (card.get("benefits") or []) if str(b).strip()][:5]
+        if benefits:
+            parts.append(f"<blockquote><b>{_esc(_clean(benefits[0], 160))}</b></blockquote>")
 
         summary = _clean(card.get("summary"), 300)
         if summary:
-            parts.append(f"<i>{_esc(summary)}</i>")
+            parts.append(_esc(summary))
 
         detail_lines = []
-        for b in [b for b in (card.get("benefits") or []) if str(b).strip()][:5]:
+        for b in benefits[1:]:
             detail_lines.append(f"• {_esc(_clean(b, 160))}")
 
-        eligibility = _clean(card.get("eligibility"), 240)
+        eligibility = re.sub(r"\s+", " ", str(card.get("eligibility") or "")).strip()
         if eligibility:
             detail_lines.append(f"<b>Kimlar uchun:</b> {_esc(eligibility)}")
-
-        deadline = _deadline_label(card.get("deadline_iso"))
-        if deadline:
-            detail_lines.append(f"<b>Oxirgi muddat:</b> {_esc(deadline)}")
 
         if detail_lines:
             # Yig'iladigan iqtibos — ichida bo'sh qator BO'LMASLIGI kerak
             parts.append("<blockquote expandable>" + "\n".join(detail_lines) + "</blockquote>")
+
+        deadline = _deadline_label(card.get("deadline_iso"))
+        if deadline:
+            parts.append(f"<b>Muddat:</b> {_esc(deadline)}")
+        else:
+            parts.append("<i>Muddat ko'rsatilmagan</i>")
 
         parts.append(f'<a href="{_esc_attr(url)}">{CTA}</a>')
         parts.append("")
