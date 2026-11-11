@@ -76,7 +76,7 @@ class GrantCard(BaseModel):
     benefits: List[str] = Field(default_factory=list,
                                 description="2-4 ta qisqa punkt: to'liq grant, stipendiya, "
                                             "yo'l xarajati, viza va h.k.")
-    eligibility: str = Field(min_length=1, description="O'zbekistonlik arizachiga tegishli qisqa talablar: fuqarolik/yashash, ta'lim, tajriba va qabul. Barcha mamlakatlar ro'yxatini ko'chirma.")
+    eligibility: str = Field(min_length=1, description="Qatnashuvchining aniq profili: ta'lim bosqichi, soha, yosh, tajriba, til va qabul talablari. Fuqarolik ro'yxatini yoki kanal auditoriyasini takrorlama.")
     eligibility_evidence: str = Field(min_length=8, description="Kirish matnidan aynan ko'chirilgan iqtibos: O'zbekiston fuqarosining mosligini ko'rsatuvchi talab. Tarjima qilma, o'ylab topma.")
     deadline_iso: Optional[str] = Field(default=None,
                                         description="Oxirgi muddat ISO 8601 da "
@@ -143,9 +143,13 @@ Bitta ham mos imkoniyat bo'lmasa, cards ni bo'sh ro'yxat qilib qaytar.
 
 benefits — aniq faktlar bo'lsin ("oyiga $2,000 stipendiya", "aviabilet qoplanadi",
 "kontrakt 100% to'lanadi"), umumiy gap emas ("ajoyib imkoniyat").
-Qisman kontrakt chegirmasini to'liq grant deb yozma. Eligibility matnida
-O'zbekistonlik arizachiga kerakli shartlarni qisqa ber, davlatlarning uzun
-ro'yxatini ko'chirma; eligibility_evidence esa manbadan aynan olingan iqtibos bo'lsin.
+Qisman kontrakt chegirmasini to'liq grant deb yozma.
+eligibility maydonida faqat qatnashuvchining amaliy profilini yoz: ta'lim
+bosqichi, soha, yosh, tajriba, til, aniq yashash joyi sharti va qabul talablari.
+"O'zbekiston fuqarolari", "xalqaro talabalar" yoki davlatlar ro'yxatini
+takrorlama. Kanal auditoriyasi ma'lum; moslik ichkarida tekshiriladi.
+Manbada bor talablarni yoz, yo'q raqam yoki shartni o'ylab topma.
+eligibility_evidence ichidagi asl davlatlar ro'yxati faqat ichki dalil.
 """
 
 

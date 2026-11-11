@@ -25,7 +25,7 @@ Supabase muddati yaqin posted yozuvlar → eslatma
 - **Tashkilot doirasi:** umumiy bir xil sarlavha turli tashkilotlardagi grantlarni avtomatik birlashtirmaydi.
 - **Moslik dalili:** AI kartochkasi manba matnidan aynan olingan eligibility iqtibosini qaytarishi kerak. Fuqarolik va yashash talablari alohida tekshiriladi.
 - **Vaqtinchalik xato:** resolution/AI nosozligi doimiy rad etish deb saqlanmaydi; baza yozish xatosi yashirilmaydi.
-- **Emojisiz uslub:** sarlavha, yig'iladigan tafsilotlar, tashqarida ko'rinadigan muddat, bitta ariza tugmasi.
+- **Emojisiz uslub:** sarlavha, brendli muqova, yig'iladigan tafsilotlar, tashqarida ko'rinadigan muddat, bitta ariza tugmasi.
 
 Barcha dunyo dasturlarini topish yoki barcha vaziyatlarda takror bo'lmasligi
 kafolatlanmaydi. Muhim qoldiq cheklovlar auditda dalillari bilan yozilgan.
@@ -49,7 +49,8 @@ va dependency audit qayta bajarilishi kerak.
 
 `.env.example` ni `.env` deb nusxalab to'ldiring. Production uchun:
 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `GEMINI_API_KEY` (yoki `GEMINI_API_KEYS`),
-`SUPABASE_URL`, `SUPABASE_KEY`. `ADMIN_ID` — ixtiyoriy kunlik/nosozlik hisoboti.
+`SUPABASE_URL`, `SUPABASE_KEY`. Gemini zanjiri ishlamasa `GROQ_API_KEY` bilan
+`openai/gpt-oss-120b` zaxirasi ishlaydi. `ADMIN_ID` — ixtiyoriy kunlik/nosozlik hisoboti.
 
 Baza: `posted_grants` jadvali mavjud bo'lishi kerak. `migration.sql` mavjud
 jadvalni yangilaydi; toza Supabase loyihasi uchun boshlang'ich CREATE TABLE
@@ -98,7 +99,7 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = '1'
 .\.venv\Scripts\python.exe -m pytest tests/ -q
 ```
 
-143 ta tarmoqsiz regression/integratsiya testi Python 3.11 va 3.13'da o'tgan.
+149 ta tarmoqsiz regression/integratsiya testi Python 3.11 va 3.13'da o'tgan.
 Testlar haqiqiy `.env`/kalitlarni yuklamaydi, socket ulanishlarini bloklaydi.
 Jonli manba tekshiruvi va URL smoke natijalari `docs/` ichida sanasi bilan saqlangan.
 Yangi testlar, statik correctness/security va dependency audit push/PR workflow'iga qo'shilgan.
