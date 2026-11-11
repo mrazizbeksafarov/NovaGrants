@@ -74,9 +74,9 @@ def main():
     cards = [{
         "name": "Global Flourishing Scholarship (2027)",
         "url": "https://www.sussex.ac.uk/study/fees-funding/masters-scholarships/view/1959-Global-Flourishing-Scholarship",
-        "summary": "Sussex universitetida magistratura uchun kontrakt chegirmasi. O‘zbekiston fuqarolari ham belgilangan talablar asosida qatnasha oladi.",
+        "summary": "Sussex universitetida magistratura xarajatlarini kamaytirish uchun kontrakt chegirmasi.",
         "benefits": ["Birinchi yil kontraktidan £5 000 chegirma"],
-        "eligibility": "Ro‘yxatdagi davlat fuqaroligi, Overseas fee status va tegishli magistratura kursiga qabul talab qilinadi.",
+        "eligibility": "Tegishli magistratura kursiga qabul olgan, Overseas fee statusiga ega nomzodlar. Kontrakti boshqa tashkilot tomonidan to‘liq qoplanadiganlar qatnasha olmaydi.",
     }, {
         "name": "ETH Student Summer Research Fellowship",
         "url": "https://inf.ethz.ch/studies/summer-research-fellowship.html",
