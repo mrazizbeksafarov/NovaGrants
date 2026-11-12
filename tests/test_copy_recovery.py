@@ -1,3 +1,4 @@
+import pytest
 from copy import deepcopy
 
 import ai_agent
@@ -102,3 +103,22 @@ def test_editorial_phase_stops_at_time_budget_and_leaves_rest_retryable(monkeypa
     assert main.publish(rows) == 0
     assert len(seen) == 2
     assert {row["grant"]["url"] for row in saved} == {g["url"] for g in seen}
+
+
+def test_screening_stops_when_every_provider_is_out_of_quota(monkeypatch):
+    rows = [item(n, url=f"https://official.example/{n}", official_evidence_url=f"https://official.example/{n}") for n in range(5)]
+    monkeypatch.setattr(main, "DB_READY", False)
+    monkeypatch.setattr(main, "DRY_RUN", True)
+    monkeypatch.setattr(main.ai_agent, "gemini_available", lambda: False)
+    state = {"left": True}
+    monkeypatch.setattr(main.ai_agent, "any_provider_available", lambda: state["left"])
+    seen, saved = [], []
+    def decide(batch):
+        seen.extend(batch)
+        state["left"] = False
+        return None
+    monkeypatch.setattr(main, "generate_post_content", decide)
+    monkeypatch.setattr(main, "save_grants_batch", saved.extend)
+    with pytest.raises(RuntimeError, match="AI"):
+        main.publish(rows)
+    assert len(seen) == 1 and saved == []

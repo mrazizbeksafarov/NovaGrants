@@ -202,3 +202,17 @@ def test_quota_on_one_key_does_not_disable_the_other_key(monkeypatch):
     assert ai_agent._usable_key("model-a") == 1
     ai_agent._mark_unavailable("model-a", QuotaError("429 per day limit exceeded"), 1)
     assert not ai_agent.gemini_available()
+
+
+def test_groq_daily_token_cap_stops_further_calls_in_the_run(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+    calls = []
+    def post(*args, **kwargs):
+        calls.append(1)
+        return SimpleNamespace(status_code=429, headers={}, json=lambda: {"error": {
+            "code": "rate_limit_exceeded", "message": "Rate limit reached on tokens per day (TPD): Limit 200000"}})
+    monkeypatch.setattr(groq_fallback.requests, "post", post)
+    assert groq_fallback.request_content("Editor", "Prompt", {}) is None
+    assert groq_fallback.request_content("Editor", "Prompt", {}) is None
+    assert groq_fallback.request_text("Pick") is None
+    assert len(calls) == 1 and not groq_fallback.available()
