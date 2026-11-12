@@ -216,3 +216,44 @@ def test_groq_daily_token_cap_stops_further_calls_in_the_run(monkeypatch):
     assert groq_fallback.request_content("Editor", "Prompt", {}) is None
     assert groq_fallback.request_text("Pick") is None
     assert len(calls) == 1 and not groq_fallback.available()
+
+
+def test_fallback_model_uses_its_spare_key_after_first_key_quota(monkeypatch):
+    monkeypatch.setattr(ai_agent, "API_KEYS", ["key-a", "key-b"])
+    monkeypatch.setattr(ai_agent, "MODEL_CHAIN", ["model-a", "model-b"])
+    monkeypatch.setattr(ai_agent, "MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(ai_agent, "_UNAVAILABLE_MODELS", set())
+    monkeypatch.setattr(ai_agent.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ai_agent, "_groq_content", lambda grants: None)
+    calls = []
+    def client(key):
+        def generate(**kwargs):
+            calls.append((kwargs["model"], key))
+            if kwargs["model"] == "model-a":
+                raise QuotaError("503 UNAVAILABLE")
+            if key == 0:
+                raise QuotaError("429 RESOURCE_EXHAUSTED. Generate content requests per day limit exceeded.")
+            return SimpleNamespace(text="", usage_metadata=None)
+        return SimpleNamespace(models=SimpleNamespace(generate_content=generate))
+    monkeypatch.setattr(ai_agent, "get_client", client)
+    ai_agent.generate_post_content([item()])
+    assert ("model-b", 0) in calls and ("model-b", 1) in calls
+    assert calls.index(("model-b", 1)) == calls.index(("model-b", 0)) + 1
+
+
+def test_unsupported_thinking_config_retries_same_model_without_spending_an_attempt(monkeypatch):
+    monkeypatch.setattr(ai_agent, "API_KEYS", ["key-a"])
+    monkeypatch.setattr(ai_agent, "MODEL_CHAIN", ["model-a"])
+    monkeypatch.setattr(ai_agent, "MAX_ATTEMPTS", 1)
+    monkeypatch.setattr(ai_agent, "_UNAVAILABLE_MODELS", set())
+    monkeypatch.setattr(ai_agent, "_NO_THINKING_CONFIG", set())
+    monkeypatch.setattr(ai_agent, "_groq_content", lambda grants: None)
+    calls = []
+    def generate(**kwargs):
+        calls.append(kwargs["model"])
+        if len(calls) == 1:
+            raise RuntimeError("Thinking config is not supported for this model")
+        return SimpleNamespace(text="", usage_metadata=None)
+    monkeypatch.setattr(ai_agent, "get_client", lambda key: SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
+    ai_agent.generate_post_content([item()])
+    assert calls == ["model-a", "model-a"]

@@ -371,34 +371,42 @@ def generate_post_content(grants: list) -> dict:
 
     for attempt in range(total_attempts):
         model = plan[attempt]
-        key = _usable_key(model, attempt)
-        if key is None:
-            continue
-        cli = get_client(key)
-        try:
-            resp = cli.models.generate_content(
-                model=model, contents=prompt, config=_config_for(model))
-        except Exception as e:
-            msg = str(e)
+        resp = None
+        # A key whose daily quota is spent (or that timed out) is not an attempt:
+        # the same model is retried at once with the next usable key, so a
+        # working spare key of a fallback model is never skipped.
+        while True:
+            key = _usable_key(model, attempt)
+            if key is None:
+                break
+            cli = get_client(key)
+            try:
+                resp = cli.models.generate_content(
+                    model=model, contents=prompt, config=_config_for(model))
+                break
+            except Exception as e:
+                msg = str(e)
 
-            if "hinking" in msg and "not supported" in msg and model not in _NO_THINKING_CONFIG:
-                _NO_THINKING_CONFIG.add(model)
-                print(f"  {model} 'thinking' sozlamasini qo'llamaydi — sozlamasiz qayta urinamiz.")
-                continue
+                if "hinking" in msg and "not supported" in msg and model not in _NO_THINKING_CONFIG:
+                    _NO_THINKING_CONFIG.add(model)
+                    print(f"  {model} 'thinking' sozlamasini qo'llamaydi — sozlamasiz qayta urinamiz.")
+                    continue
 
-            if _mark_unavailable(model, e, key):
-                continue
+                if _mark_unavailable(model, e, key):
+                    continue
 
-            transient = getattr(e, "code", None) in {408, 429, 500, 502, 503, 504} or any(
-                c in msg for c in ("503", "429", "500", "504", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
-            if transient:
-                wait = min(15 * (2 ** attempt), 60)
-                print(f"  {model} (kalit #{key + 1}) band. Keyingi kalit/modelga o'tamiz...")
-                if attempt + 1 < total_attempts:
-                    time.sleep(wait)
-                continue
+                transient = getattr(e, "code", None) in {408, 429, 500, 502, 503, 504} or any(
+                    c in msg for c in ("503", "429", "500", "504", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
+                if transient:
+                    wait = min(15 * (2 ** attempt), 60)
+                    print(f"  {model} (kalit #{key + 1}) band. Keyingi kalit/modelga o'tamiz...")
+                    if attempt + 1 < total_attempts:
+                        time.sleep(wait)
+                    break
 
-            print(f"  AI xatoligi ({model}): {type(e).__name__}, code={getattr(e, 'code', 'unknown')}")
+                print(f"  AI xatoligi ({model}): {type(e).__name__}, code={getattr(e, 'code', 'unknown')}")
+                break
+        if resp is None:
             continue
 
         raw = re.sub(r"^```(?:json)?|```$", "", (resp.text or "").strip()).strip()
