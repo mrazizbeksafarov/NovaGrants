@@ -95,14 +95,16 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           PYTHONIOENCODING: utf-8
+          NOVA_WORKFLOW_ALERT: '1'
         run: python main.py 2>&1 | tee bot_run.log
 
       - name: Ishga tushishdan oldingi xatoni bildirish
-        if: ${{ failure() && steps.checkout.outcome == 'success' && steps.bot.outcome == 'skipped' }}
+        if: ${{ failure() && steps.checkout.outcome == 'success' && steps.bot.outcome != 'success' && inputs.dry_run != true }}
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          NOVA_BOT_OUTCOME: ${{ steps.bot.outcome }}
         run: python tools/workflow_alert.py
 
       - name: Log faylini saqlash (Artifact)

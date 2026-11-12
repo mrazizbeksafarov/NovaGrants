@@ -59,11 +59,19 @@ actions are pinned to the verified commit SHAs of releases v7.0.1, v7.1.0 and
 v7.0.2. Pip has the same bounded version range as CI. Dependency versions remain
 constrained by `constraints.txt`.
 
-A dependency-free, fixed-host HTTPS alert can notify the existing admin if
-installation or tests prevent the Python bot from starting. It does not replace
-the bot's own failure report, print tokens or turn a failed workflow green.
+A dependency-free, fixed-host HTTPS alert notifies the existing admin for a real
+workflow failure, including installation, imports or tests that prevent the bot
+from starting. Actions uses one workflow-managed failure alert, while local runs
+retain their own report. Dry-run failures do not send failure alerts. Tokens are
+not printed and a failed workflow is not turned green by the alert.
 CI now rejects medium/high Bandit findings in runtime modules and this alert.
 Required CI checks on `main` are recorded in the release PR after verification.
+
+If at least one verified card was prepared/delivered, another AI batch's temporary
+failure or unverifiable quote is a partial-success warning, not a failed whole
+run. Its source URLs remain retryable and the administrator report lists it. A
+run with no verified result and a failed AI batch still reports failure. This
+corrects the false whole-run failure observed in dry-run `43184344187`.
 
 ## Evidence
 

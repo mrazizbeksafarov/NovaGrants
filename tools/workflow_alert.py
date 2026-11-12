@@ -14,7 +14,10 @@ def send_startup_alert():
     if not token or not admin:
         print("Startup alert is not configured.")
         return False
-    text = "Nova Grants: tayyorlash yoki tekshirish bosqichi tugamadi; bot ishga tushmadi."
+    if os.getenv("NOVA_BOT_OUTCOME") == "failure":
+        text = "Nova Grants: yurish yakunlanmadi. Log va yuborish jurnalini tekshiring; yetkazilgan post qayta yuborilmaydi."
+    else:
+        text = "Nova Grants: tayyorlash yoki tekshirish bosqichi tugamadi; bot ishga tushmadi."
     if re.fullmatch(r"[\w.-]+/[\w.-]+", repo) and run.isdigit():
         text += f"\nhttps://github.com/{repo}/actions/runs/{run}"
     connection = http.client.HTTPSConnection("api.telegram.org", timeout=20)

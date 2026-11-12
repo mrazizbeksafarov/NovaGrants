@@ -48,6 +48,7 @@ MAX_POST_PER_RUN = 32        # AI tekshiradigan nomzodlar; nashr — kuniga bitt
 MAX_DIGEST_CARDS = 8
 MAX_EDITORIAL_BATCHES = 8
 RESOLVE_ISSUES = []
+PUBLISH_ISSUES = []
 RESOLVE_WORKERS = 14         # superkompyuter parallel oqimlari (har bir domen alohida throttle nazoratida)
 
 # Quruq sinov: hech narsa yuborilmaydi va bazaga yozilmaydi.
@@ -390,6 +391,7 @@ def enrich_deadlines(items):
 
 def publish(items):
     """6-bosqich: AI matn yozadi va kanalga chiqaramiz."""
+    PUBLISH_ISSUES.clear()
     if DB_READY and not DRY_RUN:
         resumed = delivery_journal.resume(CHANNEL_ID, "digest", publish_post)
         if resumed is not None:
@@ -501,7 +503,10 @@ def publish(items):
     if tokens:
         log(f"── Jami sarflangan token: {tokens}")
     if failure:
-        raise failure
+        if not posted:
+            raise failure
+        PUBLISH_ISSUES.append(str(failure))
+        log(f"── Qisman yakunlandi: {failure}. Tasdiqlangan digest tayyor, qolganlari qayta tekshiriladi.")
     return posted
 
 
@@ -581,6 +586,7 @@ def run():
     if deferred and not ready:
         raise RuntimeError("Rasmiy sahifalardan yetarli dalil olinmadi; tasdiqlanmagan grant chiqarilmadi")
     posted = publish(enrich_deadlines(ready))
+    problems.extend(PUBLISH_ISSUES)
     if ready and not posted:
         problems.append(f"{len(ready)} ta nomzod bor edi, lekin hech biri post qilinmadi")
 
@@ -630,7 +636,7 @@ if __name__ == "__main__":
     try:
         run_with_recovery()
     except Exception as exc:
-        if not DRY_RUN:
+        if not DRY_RUN and os.getenv("NOVA_WORKFLOW_ALERT") != "1":
             notify_admin(f"⚠️ <b>Nova Grants: yurish yakunlanmadi</b>\nXato turi: {type(exc).__name__}. "
                          "GitHub Actions logini va yuborish jurnalini tekshiring; "
                          "yetkazilgani tasdiqlangan post qayta yuborilmaydi.")

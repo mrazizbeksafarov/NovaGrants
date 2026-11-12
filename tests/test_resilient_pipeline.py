@@ -301,6 +301,21 @@ def test_editorial_request_limit_leaves_unprocessed_grants_retryable(monkeypatch
     assert len(saves) == 8 and all(row["status"] == "posted" for row in saves)
 
 
+def test_verified_digest_is_not_failed_by_another_unverified_batch(monkeypatch):
+    monkeypatch.setattr(main, "DB_READY", False)
+    rows = [{**grant(n), "summary": "x" * 6000} for n in range(2)]
+    replies = [{"cards": [{"name": rows[0]["title"], "url": rows[0]["url"], "_source": rows[0]}]},
+               {"cards": [], "unverified_urls": [rows[1]["url"]]}]
+    monkeypatch.setattr(main, "generate_post_content", lambda batch: replies.pop(0))
+    sends, saves = [], []
+    monkeypatch.setattr(main, "publish_post", lambda *args: sends.append(True) or True)
+    monkeypatch.setattr(main, "save_grants_batch", saves.extend)
+    assert main.publish(rows) == 1
+    assert len(sends) == 1 and len(saves) == 1
+    assert saves[0]["grant"]["url"] == rows[0]["url"]
+    assert main.PUBLISH_ISSUES
+
+
 def test_pipeline_keeps_healthy_programme_when_another_official_page_is_down(monkeypatch):
     db = use_database(monkeypatch)
     rows = [grant(1), grant(2)]

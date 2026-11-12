@@ -396,8 +396,8 @@ def test_later_ai_failure_still_publishes_earlier_choices_then_reports(monkeypat
     posts, saved = [], []
     monkeypatch.setattr(main, "publish_post", lambda blocks, html: posts.append(blocks) or True)
     monkeypatch.setattr(main, "save_grants_batch", saved.extend)
-    with pytest.raises(RuntimeError, match="AI"):
-        main.publish(grants)
+    assert main.publish(grants) == 1
+    assert main.PUBLISH_ISSUES and "AI" in main.PUBLISH_ISSUES[0]
     assert len(posts) == 1
     assert [row["status"] for row in saved].count("posted") == 1
     assert all(row["grant"]["url"] not in {g["url"] for g in grants[8:]} for row in saved)
