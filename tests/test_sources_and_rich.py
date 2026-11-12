@@ -27,8 +27,8 @@ def item(n=1, **fields):
 
 
 def card(**fields):
-    return {"index": 1, "name": "ETH Research Fellowship", "summary": "Funded research.",
-            "url": item()["url"], "eligibility": "All nationalities",
+    return {"index": 1, "name": "ETH Research Fellowship", "summary": "Moliyalashtiriladigan tadqiqot dasturi.",
+            "url": item()["url"], "eligibility": "Bakalavr bosqichining so'nggi kursida o'qiyotgan talabalar",
             "eligibility_evidence": "Applicants of all nationalities may apply.",
             "deadline_iso": "2027-12-15T23:59:59Z", **fields}
 
@@ -222,6 +222,7 @@ def test_deadline_is_visible_outside_collapsed_details():
     blocks, _ = build_post("New", [card(benefits=["Funding"])])
     deadline = next(b for b in blocks if b["type"] == "paragraph" and "date_time" in str(b))
     assert "15-dekabr, 2027" in str(deadline)
+    assert str(deadline).count("15-dekabr, 2027") == 1
     assert all("date_time" not in str(b) for b in blocks if b["type"] == "details")
 
 

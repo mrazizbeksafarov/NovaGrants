@@ -35,6 +35,58 @@ def test_database_failure_after_telegram_is_repaired_without_resending(monkeypat
     assert [r["status"] for r in db.rows] == ["delivery_done", "posted"]
 
 
+@pytest.mark.parametrize("old_status", ["duplicate", "skipped", "posted"])
+def test_legacy_official_url_under_source_key_does_not_break_delivery(monkeypatch, old_status):
+    g = grant()
+    original = {"url": g["url"], "url_key": g["source_key"], "status": old_status,
+                "deadline": "2030-01-01", "reminder_sent": True}
+    db = use_database(monkeypatch, [original])
+    sends = []
+    assert deliver(lambda *args: sends.append(args) or True) == 1
+    assert journal.resume("@Nova_Grants", "digest", lambda *args: sends.append(args) or True) == 0
+    assert len(sends) == 1
+    url_owner = next(r for r in db.rows if r["url"] == g["url"])
+    assert url_owner["status"] == "posted"
+    if old_status == "posted":
+        assert url_owner == original
+
+
+def test_two_legacy_rows_owning_url_and_key_preserve_both_without_conflict(monkeypatch):
+    g = grant()
+    db = use_database(monkeypatch, [
+        {"url": g["url"], "url_key": "legacy-source-key", "status": "duplicate"},
+        {"url": g["source_url"], "url_key": g["url_key"], "status": "skipped"}])
+    database.save_grant(g)
+    assert len(db.rows) == 2
+    assert db.rows[0]["status"] == "posted" and db.rows[0]["url_key"] == "legacy-source-key"
+    assert db.rows[1]["status"] == "skipped"
+
+
+def test_insert_race_on_url_with_a_different_key_is_reconciled(monkeypatch):
+    g = grant()
+    db = use_database(monkeypatch)
+    db.race_row = {"url": g["url"], "url_key": "legacy-source-key", "status": "duplicate"}
+    database.save_grant(g)
+    assert len(db.rows) == 1 and db.rows[0]["status"] == "posted"
+
+
+def test_legacy_posted_url_is_deduplicated_even_when_every_derived_key_changed(monkeypatch):
+    g = grant()
+    use_database(monkeypatch, [{"url": g["url"], "url_key": "legacy-key", "status": "posted"}])
+    monkeypatch.setattr(main, "DB_READY", True)
+    monkeypatch.setattr(main, "save_grants_batch", lambda rows: None)
+    assert main.deduplicate([g]) == []
+
+
+def test_key_claimed_during_legacy_url_promotion_is_reconciled(monkeypatch):
+    g = grant()
+    db = use_database(monkeypatch, [{"url": g["url"], "url_key": "legacy-key", "status": "duplicate"}])
+    db.race_row = {"url": g["source_url"], "url_key": g["url_key"], "status": "skipped"}
+    database.save_grant(g)
+    assert len(db.rows) == 2 and db.rows[0]["status"] == "posted"
+    assert db.rows[0]["url_key"] == "legacy-key"
+
+
 def test_timeout_blocks_another_send_even_on_the_next_day(monkeypatch):
     db = use_database(monkeypatch)
     def timeout(*args):

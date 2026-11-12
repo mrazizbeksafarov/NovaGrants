@@ -28,6 +28,7 @@ from google import genai
 from google.genai import types
 
 from filters import validate_deadline_iso
+from editorial_checks import copy_problem, foreign_enrollment_required
 import groq_fallback
 
 load_dotenv()
@@ -95,7 +96,7 @@ class GrantCard(BaseModel):
     name: str = Field(min_length=1, description="Imkoniyat nomi. Original nomni saqla, tarjima qilma.")
     summary: str = Field(min_length=1, description="1-2 jumla o'zbekcha: bu nima va nima beradi.")
     benefits: List[str] = Field(default_factory=list,
-                                description="2-4 ta qisqa punkt: to'liq grant, stipendiya, "
+                                description="Faqat o'zbek tilida 2-4 ta qisqa punkt: to'liq grant, stipendiya, "
                                             "yo'l xarajati, viza va h.k.")
     eligibility: str = Field(min_length=1, description="Qatnashuvchining aniq profili: ta'lim bosqichi, soha, yosh, tajriba, til va qabul talablari. Fuqarolik ro'yxatini yoki kanal auditoriyasini takrorlama.")
     eligibility_evidence: str = Field(min_length=8, description="Kirish matnidan aynan ko'chirilgan iqtibos: O'zbekiston fuqarosining mosligini ko'rsatuvchi talab. Tarjima qilma, o'ylab topma.")
@@ -159,6 +160,17 @@ tanlov va musobaqa, akselerator, yosh tadbirkorlar uchun moliyalashtirish —
 O'zbekistonlik bir kishi o'zi ariza topshira oladigan har qanday imkoniyat.
 
 SIFAT MUHIMROQ
+Auditoriya O'zbekistonda yashab/o'qib ariza topshiradi. Avvaldan AQSh yoki boshqa
+xorijiy davlat universitetida o'qish, o'sha davlatda yashash yoki CPT/OPT kabi
+mahalliy ishlash ruxsatini talab qiladigan dasturlarni TASHLA. Fuqarolikka
+cheklov yo'qligi yashash/o'qish joyi talabini bekor qilmaydi.
+Nomi rasmiy dastur nomi bo'lsin, maqolaning SEO sarlavhasi yoki '| 40 Fully
+Funded Seats' kabi reklama qo'shimchalarini ko'chirma. Nomdan tashqari barcha
+ommaviy maydonlar o'zbek tilida bo'lsin; 'Living stipend', 'Hands-on research',
+'Mentoring by' kabi tarjimasiz iboralarni qoldirma.
+Ariza to'lovi, qaytariladigan depozit, viza xarajati va aviabilet oldindan
+to'lanib keyin qoplanishi kabi muhim shartlarni yashirma; benefits yoki summary
+ichida aniq yoz. Manbada yo'q xarajat yoki sanani taxmin qilma.
 Yarim-yorti mos kelganini "shunchaki bo'lsin" deb qo'shma.
 Bitta ham mos imkoniyat bo'lmasa, cards ni bo'sh ro'yxat qilib qaytar.
 
@@ -352,6 +364,10 @@ def generate_post_content(grants: list) -> dict:
                 grants[c["index"] - 1].get("summary", "")) for c in cards):
             print(f"  {model} moslik dalili kirish matnida topilmadi — qayta urinamiz.")
             continue
+        if any(copy_problem(c) for c in cards):
+            print(f"  {model}: tahrir sifati tekshiruvidan o'tmadi — qayta urinamiz.")
+            prompt += "\nTahrir tekshiruvi: benefits, summary, eligibility faqat o'zbekcha bo'lsin; O'zbekiston fuqarosi iborasini takrorlama."
+            continue
         if not cards:
             print("  AI mos imkoniyat topmadi — bu to'plam o'tkazib yuborildi.")
             return {"headline": data["headline"], "cards": [], "usage": {}}
@@ -364,7 +380,7 @@ def generate_post_content(grants: list) -> dict:
 
         content = _attach_urls({"headline": data.get("headline", ""),
                                 "cards": cards, "usage": usage}, grants)
-        if content["cards"]:
+        if content["cards"] or content.get("audience_excluded_urls"):
             return content
         print(f"  {model} javobidagi kartochkalar yaroqsiz — qayta urinamiz.")
 
@@ -387,7 +403,8 @@ def _groq_content(grants):
         verified, unverified = [], []
         for c in data["cards"]:
             grant = grants[c["index"] - 1]
-            if normalize(c["eligibility_evidence"]) in normalize(grant.get("summary", "")):
+            if (normalize(c["eligibility_evidence"]) in normalize(grant.get("summary", ""))
+                    and not copy_problem(c)):
                 verified.append(c)
             else:
                 unverified.append(grant["url"])
@@ -412,6 +429,7 @@ def _attach_urls(content: dict, grants: list) -> dict:
     bad_deadlines = 0
 
     seen_indexes = set()
+    audience_excluded = []
     for card in content.get("cards", []):
         try:
             idx = int(card.get("index", 0))
@@ -426,6 +444,10 @@ def _attach_urls(content: dict, grants: list) -> dict:
             continue
 
         source = grants[idx - 1]
+        if foreign_enrollment_required(str(source.get("summary") or "") + " " + str(card.get("eligibility") or "")):
+            print("  Xorijda avvaldan o'qish talabi bor dastur auditoriyaga mos emas — tashlandi.")
+            audience_excluded.append(source.get("url"))
+            continue
         url = source.get("url", "")
         if not url:
             dropped += 1
@@ -451,6 +473,7 @@ def _attach_urls(content: dict, grants: list) -> dict:
         print(f"  {dropped} ta kartochka noto'g'ri raqam sababli tashlandi.")
 
     content["cards"] = valid
+    content["audience_excluded_urls"] = audience_excluded
     return content
 
 

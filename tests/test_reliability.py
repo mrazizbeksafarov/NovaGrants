@@ -292,6 +292,15 @@ class Query:
         if db.empty_writes:
             return SimpleNamespace(data=[])
         if self.action == "update":
+            if db.race_row is not None:
+                db.rows.append(db.race_row)
+                db.race_row = None
+            # PostgreSQL checks both unique constraints on UPDATE as well.
+            for row in matches:
+                changed = {**row, **self.payload}
+                if any(other is not row and (other["url_key"] == changed["url_key"]
+                       or other["url"] == changed["url"]) for other in db.rows):
+                    raise RuntimeError("23505 duplicate key")
             for row in matches:
                 row.update(self.payload)
             return SimpleNamespace(data=deepcopy(matches))

@@ -26,7 +26,7 @@ from filters import (
 )
 from link_resolver import resolve_grant, is_aggregator, is_blocked
 from database import (
-    init_db, get_seen_source_keys, get_seen_url_keys, get_seen_fingerprints,
+    init_db, get_seen_source_keys, get_seen_url_keys, get_seen_urls, get_seen_fingerprints,
     get_seen_fingerprint_scopes,
     save_grant as _save_grant, save_grants_batch as _save_grants_batch,
     get_grants_nearing_deadline, mark_reminder_sent as _mark_reminder_sent, stats,
@@ -306,6 +306,7 @@ def deduplicate(items):
     items = clean_items
     url_queries = [g["url_key"] for g in items if g.get("url_key")] + [g["canonical_url_key"] for g in items if g.get("canonical_url_key")]
     seen_urls = seen_url_keys(url_queries)
+    seen_exact_urls = get_seen_urls([g["url"] for g in items]) if DB_READY else set()
     seen_fps = get_seen_fingerprint_scopes([g["fingerprint"] for g in items if g.get("fingerprint")]) if DB_READY else set()
     seen_slugs = get_seen_semantic_slugs([g["semantic_slug"] for g in items if g.get("semantic_slug")]) if DB_READY else set()
 
@@ -341,7 +342,7 @@ def deduplicate(items):
     dropped_db = dropped_batch = 0
     for group in groups.values():
         in_database = any(
-            g.get("url_key") in seen_urls or g.get("canonical_url_key") in seen_urls
+            g.get("url") in seen_exact_urls or g.get("url_key") in seen_urls or g.get("canonical_url_key") in seen_urls
             or (g.get("fingerprint"), root_domain(host_of(g["url"]))) in seen_fps
             or g.get("semantic_slug") in seen_slugs
             for g in group)
@@ -566,6 +567,7 @@ if __name__ == "__main__":
         run()
     except Exception as exc:
         if not DRY_RUN:
-            notify_admin(f"⚠️ <b>Nova Grants to'xtadi</b>\nXato turi: {type(exc).__name__}. "
-                         "GitHub Actions logini tekshiring; saqlanmagan to'plam qayta ko'riladi.")
+            notify_admin(f"⚠️ <b>Nova Grants: yurish yakunlanmadi</b>\nXato turi: {type(exc).__name__}. "
+                         "GitHub Actions logini va yuborish jurnalini tekshiring; "
+                         "yetkazilgani tasdiqlangan post qayta yuborilmaydi.")
         raise
