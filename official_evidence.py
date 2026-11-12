@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from editorial_checks import foreign_enrollment_required
 from link_resolver import _get, host_of, root_domain, is_aggregator, is_blocked
 from opportunity_content import opportunity_summary, ELIGIBILITY_CONTEXT
+from selection_policy import established_issuer, stated_application_fee, EVENT
 
 MAX_PAGES = 32
 WORKERS = 6
@@ -29,7 +30,7 @@ def _document(response):
     if len(response.content) > 3_000_000:
         return None
     soup = BeautifulSoup(response.text, "html.parser")
-    for node in soup.select("script, style, nav, footer, header, aside"):
+    for node in soup.select("script, style, nav, footer, aside"):
         node.decompose()
     root = soup.select_one("main, article, [role=main]") or soup.body or soup
     text = root.get_text("\n", strip=True)
@@ -82,6 +83,9 @@ def verify_one(grant):
             final_url = next_url
         if not ELIGIBILITY_CONTEXT.search(text):
             return Evidence(grant, "retry", "rasmiy sahifada qatnashish dalili yetarli emas")
+        if (EVENT.search(grant.get("title", ""))
+                and stated_application_fee(text) and not established_issuer(final_url)):
+            return Evidence(grant, "review", "paid_private_forum")
         if foreign_enrollment_required(text):
             return Evidence(grant, "ineligible", "xorijda avvaldan o'qish sharti bor")
         verified = dict(grant)

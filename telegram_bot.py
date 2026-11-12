@@ -508,6 +508,12 @@ def _remember_sent():
         _sent_messages.append(_last_result)
 
 
+def delivery_receipts():
+    return [{"message_id": m["message_id"], "chat_id": (m.get("chat") or {}).get("id"),
+             "username": (m.get("chat") or {}).get("username")}
+            for m in _sent_messages]
+
+
 def fits_single_message(blocks: list, html_text: str) -> bool:
     """Every fallback must fit too, before the first Telegram write."""
     return (bool(blocks) and not validate_blocks(blocks)

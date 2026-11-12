@@ -18,29 +18,34 @@ import sys
 import time
 import concurrent.futures
 import delivery_journal
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from scraper import fetch_all
 from filters import (
-    looks_like_opportunity, extract_deadline, deadline_passed, validate_deadline_iso,
+    extract_deadline, validate_deadline_iso,
+    discovery_decision,
 )
 from link_resolver import resolve_grant, is_aggregator, is_blocked
 from database import (
     init_db, get_seen_source_keys, get_seen_url_keys, get_seen_urls, get_seen_fingerprints,
     get_seen_fingerprint_scopes,
     save_grant as _save_grant, save_grants_batch as _save_grants_batch,
+    save_review as _save_review, posted_identity_rows,
     get_grants_nearing_deadline, mark_reminder_sent as _mark_reminder_sent, stats,
 )
 from ai_agent import generate_post_content, BATCH_SIZE
 from official_evidence import verify_all as verify_official_pages
 from scraper import SOURCE_ISSUES
 from resilience import transient_error
+import selection_audit
+from selection_policy import priority as selection_priority, discovery_priority, cycle_hint
 from post_builder import build_post, usable_cards
 from telegram_bot import (
     send_telegram_message as _send_telegram_message,
     publish_single as _publish, fits_single_message, CHANNEL_ID,
     notify_admin,
     DeliveryUncertain,
+    delivery_receipts,
 )
 
 MAX_RESOLVE_PER_RUN = 80     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
@@ -49,6 +54,8 @@ MAX_DIGEST_CARDS = 8
 MAX_EDITORIAL_BATCHES = 8
 RESOLVE_ISSUES = []
 PUBLISH_ISSUES = []
+REMINDER_ISSUES = []
+REVIEW_ISSUES = []
 RESOLVE_WORKERS = 14         # superkompyuter parallel oqimlari (har bir domen alohida throttle nazoratida)
 
 # Quruq sinov: hech narsa yuborilmaydi va bazaga yozilmaydi.
@@ -85,8 +92,15 @@ def save_grants_batch(items_with_meta):
     _save_grants_batch(items_with_meta)
 
 
-def seen_source_keys(keys):
-    return get_seen_source_keys(keys) if DB_READY else set()
+def seen_source_keys(keys, incoming_titles=None):
+    return get_seen_source_keys(keys, incoming_titles) if DB_READY else set()
+
+
+def hold_for_review(grant, reason):
+    selection_audit.record("policy", grant, "review", reason)
+    REVIEW_ISSUES.append((grant.get("source_key") or grant.get("url"), reason))
+    if not DRY_RUN and DB_READY:
+        _save_review(grant, reason)
 
 
 def seen_url_keys(keys):
@@ -121,7 +135,9 @@ def publish_post(blocks, html):
             log(f"│ {line}")
         log("└─\n")
         return True
-    return _publish(blocks, html)
+    if not _publish(blocks, html):
+        return False
+    return {"delivered": True, "messages": delivery_receipts()}
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -129,6 +145,7 @@ def publish_post(blocks, html):
 # ──────────────────────────────────────────────────────────────────
 def send_reminders():
     log("── Muddati yaqinlashgan grantlar tekshirilmoqda...")
+    REMINDER_ISSUES.clear()
     if DB_READY and not DRY_RUN:
         resumed = delivery_journal.resume(CHANNEL_ID, "reminder", publish_post)
         if resumed is not None:
@@ -161,7 +178,6 @@ def send_reminders():
 
     # Keep the complete reminder, including its HTML fallback, in one message.
     # Unselected rows remain reminder_sent=False for another day.
-    valid = valid[:8]
 
     if leaked:
         log(f"   {leaked} ta eski aggregator havolasi eslatmadan chiqarildi.")
@@ -169,6 +185,12 @@ def send_reminders():
     if not valid:
         log("   Eslatma uchun yaroqli yozuv yo'q.")
         return
+
+    valid = revalidate_reminders(valid)
+    if not valid:
+        log("   Hozirgi saralash bo'yicha tasdiqlangan eslatma yo'q; tekshirilmaganlar yuborilmadi.")
+        return
+    valid = sorted(valid, key=lambda g: g["deadline"])[:8]
 
     def render_reminder(valid):
         # Rich ko'rinish: sarlavha + har bir imkoniyat uchun havolali qator
@@ -236,18 +258,20 @@ def collect_candidates():
     # 2-bosqich: mavzu bo'yicha saralash
     relevant = []
     for item in raw:
-        text = f"{item.get('title', '')}\n{item.get('summary', '')}"
-        if deadline_passed(text):
-            continue
-        if not looks_like_opportunity(item.get("title", ""), item.get("summary", ""), item.get("topic", "")):
+        state, reason = discovery_decision(item.get("title", ""), item.get("summary", ""), item.get("topic", ""),
+            refresh_details=item.get("kind") == "official" and item.get("fetch_details"))
+        selection_audit.record("discovery", item, state, reason)
+        if state == "reject":
             continue
         relevant.append(item)
 
     log(f"── Saralash: {len(raw)} → {len(relevant)} ta imkoniyatga o'xshash yozuv")
 
     # 3-bosqich: allaqachon ko'rilgan maqolalar
-    seen_sources = seen_source_keys([i["source_key"] for i in relevant])
-    fresh = [i for i in relevant if i["source_key"] not in seen_sources]
+    seen_sources = seen_source_keys([i["source_key"] for i in relevant],
+                                   {i["source_key"]: i.get("title", "") for i in relevant})
+    fresh = [i for i in relevant if i["source_key"] not in seen_sources
+             or (i.get("kind") == "official" and i.get("fetch_details"))]
     log(f"── Yangi: {len(fresh)} ta ({len(relevant) - len(fresh)} tasi avval ko'rilgan)")
 
     return fresh
@@ -258,7 +282,7 @@ def resolve_links(items):
     # Round-robin across sources so one failing feed cannot fill the entire budget.
     from collections import defaultdict, deque
     queues = defaultdict(deque)
-    for item in items:
+    for item in sorted(items, key=lambda g: (*discovery_priority(g), *candidate_quality(g)), reverse=True):
         queues[item.get("source_id", "unknown")].append(item)
     batch = []
     while queues and len(batch) < MAX_RESOLVE_PER_RUN:
@@ -327,6 +351,7 @@ def deduplicate(items):
     seen_exact_urls = get_seen_urls([g["url"] for g in items]) if DB_READY else set()
     seen_fps = get_seen_fingerprint_scopes([g["fingerprint"] for g in items if g.get("fingerprint")]) if DB_READY else set()
     seen_slugs = get_seen_semantic_slugs([g["semantic_slug"] for g in items if g.get("semantic_slug")]) if DB_READY else set()
+    prior_rows = posted_identity_rows(items) if DB_READY else []
 
     # Group connected identities before choosing representatives. A later
     # bridging article can connect two earlier records; a greedy set misses it.
@@ -365,8 +390,21 @@ def deduplicate(items):
             or g.get("semantic_slug") in seen_slugs
             for g in group)
         if in_database:
+            for grant in group:
+                incoming_year = cycle_hint(grant.get("title"))
+                matches = [row for row in prior_rows if (
+                    row.get("url") == grant["url"] or row.get("url_key") in {grant.get("url_key"), grant.get("canonical_url_key")}
+                    or (row.get("semantic_slug") and row.get("semantic_slug") == grant.get("semantic_slug"))
+                    or (row.get("fingerprint") and row.get("fingerprint") == grant.get("fingerprint")
+                        and root_domain(host_of(row.get("url", ""))) == root_domain(host_of(grant["url"]))))]
+                known_years = [cycle_hint(row.get("title")) for row in matches]
+                known_years = [year for year in known_years if year]
+                if incoming_year and matches and (not known_years or incoming_year > max(known_years)):
+                    hold_for_review(grant, "new_intake_same_programme_needs_confirmation")
+                    log(f"   Yangi qabul davri tekshiruvga qoldi: {grant.get('title', '')[:70]}")
+                    grant["_cycle_review"] = True
             dropped_db += len(group)
-            duplicates_to_save.extend({"grant": g, "status": "duplicate", "key": g.get("source_key")} for g in group)
+            duplicates_to_save.extend({"grant": g, "status": "duplicate", "key": g.get("source_key")} for g in group if not g.get("_cycle_review"))
             continue
         winner = group[0]  # already ordered by evidence quality
         winner["_aliases"] = group[1:]
@@ -378,7 +416,7 @@ def deduplicate(items):
 
     log(f"── Takrorlar tashlandi: bazada bor {dropped_db} ta, shu yurishda takror {dropped_batch} ta")
     log(f"── Post uchun qoldi: {len(unique)} ta")
-    return unique
+    return sorted(unique, key=lambda g: (*discovery_priority(g), *candidate_quality(g)), reverse=True)
 
 
 def enrich_deadlines(items):
@@ -410,6 +448,7 @@ def publish(items):
     tokens = 0
     selected = []   # (card, grant): AI tanlagan, hali post qilinmagan
     rejected = []   # AI rad etgan — "skipped", ertaga qayta ishlanmaydi
+    review_records = []
     failure = None
 
     # 1) AI barcha to'plamlarni ko'rib chiqadi. Post hali yuborilmaydi: aks holda
@@ -430,13 +469,22 @@ def publish(items):
             continue
 
         retry_later = set(content.get("unverified_urls") or ())
+        rejected_urls = set(content.get("rejected_urls") or ())
+        reviews = {r["grant"]["url"]: r for r in content.get("review", [])}
+        review_records.extend(reviews.values())
+        declared = {c.get("_source", {}).get("url") for c in content.get("cards", [])}
+        retry_later.update(g["url"] for g in batch
+                           if g["url"] not in declared | rejected_urls | set(reviews))
+        for decision in content.get("decisions", []):
+            source = next((g for g in batch if g["url"] == decision["url"]), {})
+            selection_audit.record("editorial", source, decision["state"], decision["reason"])
         if not content.get("cards"):
             if retry_later:
                 failure = RuntimeError("AI dalillari tasdiqlanmadi — grantlar qayta tekshirishga qoldi")
             log("   AI bu to'plamdan tasdiqlangan mos imkoniyat topmadi"
                 + (f" ({len(retry_later)} tasi keyingi yurishda qayta ko'riladi)." if retry_later else "."))
             rejected += [{"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"}
-                         for g in batch if g["url"] not in retry_later]
+                         for g in batch if g["url"] in rejected_urls]
             continue
 
         usage = content.get("usage") or {}
@@ -454,18 +502,22 @@ def publish(items):
         for g in batch:
             if g["url"] in chosen:
                 selected.append((chosen[g["url"]], g))
-            elif g["url"] not in retry_later:
+            elif g["url"] in rejected_urls:
                 rejected.append({"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"})
         later = sum(g["url"] in retry_later for g in batch)
-        log(f"   {len(chosen)} ta tanlandi, {len(batch) - len(chosen) - later} tasi rad etildi"
+        log(f"   {len(chosen)} ta tanlandi, {len(rejected_urls)} tasi asosli rad etildi, {len(reviews)} tasi tahrir tekshiruviga qoldi"
             + (f", {later} tasi keyingi yurishda qayta ko'riladi." if later else "."))
 
     if rejected:
         save_grants_batch(rejected)
+    if review_records:
+        for record in review_records:
+            hold_for_review(record["grant"], record["reason"])
 
     # 2) Exactly ONE message. Overflow stays retryable, never `skipped`.
     posted = 0
     if selected:
+        selected.sort(key=lambda item: selection_priority(item[0]), reverse=True)
         chunk = selected[:MAX_DIGEST_CARDS]
         while chunk:
             cards = [card for card, _ in chunk]
@@ -497,6 +549,10 @@ def publish(items):
             posted = len(chunk)
         if len(selected) > len(chunk):
             log(f"   {len(selected) - len(chunk)} ta tanlangan imkoniyat keyingi yurishga qoldi (bazaga rad etilmadi).")
+        for _, grant in selected[len(chunk):]:
+            selection_audit.record("publication", grant, "defer", "digest_limit")
+        for _, grant in chunk:
+            selection_audit.record("publication", grant, "prepared" if DRY_RUN else "posted", "ranked_verified_opportunity")
         action = "tayyorlandi (yuborilmadi)" if DRY_RUN else "post qilindi"
         log(f"   ✅ {len(chunk)} ta imkoniyat bitta postda {action}.")
 
@@ -524,8 +580,47 @@ def editorial_batches(items):
         yield batch
 
 
+def revalidate_reminders(grants):
+    """Legacy posted rows must satisfy the same current policy as new posts."""
+    evidence = verify_official_pages(grants)
+    ready = []
+    for item in evidence:
+        selection_audit.record("reminder_evidence", item.grant, item.status, item.reason)
+        if item.status == "ready":
+            ready.append(item.grant)
+        elif item.status in {"ineligible", "review"}:
+            if item.status == "review":
+                hold_for_review(item.grant, item.reason)
+            mark_reminder_sent(item.grant["url"])
+        else:
+            REMINDER_ISSUES.append("Bitta eslatmaning rasmiy sahifasi vaqtincha o'qilmadi")
+    selected = []
+    for batch in editorial_batches(enrich_deadlines(ready)):
+        content = generate_post_content(batch)
+        if content is None:
+            REMINDER_ISSUES.append("Eslatma saralashi uchun AI javobi olinmadi")
+            continue
+        for item in content.get("review", []):
+            hold_for_review(item["grant"], item["reason"])
+        for card in usable_cards(content.get("cards")):
+            date = validate_deadline_iso(card.get("deadline_iso"))
+            if not date:
+                REMINDER_ISSUES.append("Eslatmaning yangi muddati tasdiqlanmadi")
+                continue
+            remaining = datetime.fromisoformat(date.replace("Z", "+00:00")) - datetime.now(timezone.utc)
+            if not timedelta(0) < remaining <= timedelta(days=5):
+                continue
+            selected.append({**card["_source"], "title": card["name"], "deadline": date})
+        for url in content.get("rejected_urls", []):
+            mark_reminder_sent(url)
+        if content.get("unverified_urls"):
+            REMINDER_ISSUES.append("Tasdiqlanmagan eslatmalar keyingi tekshiruvga qoldi")
+    return selected
+
+
 def run():
     problems = []                # yurish oxirida adminga yuboriladi
+    REVIEW_ISSUES.clear()
     started = datetime.now(timezone.utc)
     log("=" * 66)
     log(f"Nova Grants — {started.strftime('%Y-%m-%d %H:%M')} UTC"
@@ -543,6 +638,7 @@ def run():
     # Avval eslatmalar (bu yagona ruxsat etilgan takror)
     if DB_READY:
         send_reminders()
+        problems.extend(REMINDER_ISSUES)
     log()
 
     if DB_READY and not DRY_RUN:
@@ -573,20 +669,29 @@ def run():
 
     unique = deduplicate(enrich_deadlines(resolved))
     evidence = verify_official_pages(unique[:MAX_POST_PER_RUN])
+    for item in evidence:
+        selection_audit.record("official", item.grant, item.status, item.reason or "official_evidence_read")
     ready = [item.grant for item in evidence if item.status == "ready"]
     rejected = [item.grant for item in evidence if item.status == "ineligible"]
+    policy_reviews = [item for item in evidence if item.status == "review"]
     deferred = [item for item in evidence if item.status == "retry"]
     if rejected:
         save_grants_batch([{"grant": g, "status": "skipped"} for g in rejected])
+    if policy_reviews:
+        for item in policy_reviews:
+            hold_for_review(item.grant, item.reason)
+        problems.append(f"{len(policy_reviews)} ta pullik xususiy forum avtomatik nashrdan olib qolindi")
     if deferred:
         problems.append(f"{len(deferred)} ta dastur uchun rasmiy dalil olinmadi; qayta tekshirishga qoldi")
         for item in deferred:
             log(f"   Rasmiy tekshiruv: {item.reason} — {item.grant.get('title', '')[:65]}")
     log(f"── Rasmiy tekshiruv: {len(ready)} tayyor, {len(rejected)} mos emas, {len(deferred)} qayta uriniladi")
-    if deferred and not ready:
+    if deferred and not ready and not (rejected or policy_reviews):
         raise RuntimeError("Rasmiy sahifalardan yetarli dalil olinmadi; tasdiqlanmagan grant chiqarilmadi")
     posted = publish(enrich_deadlines(ready))
     problems.extend(PUBLISH_ISSUES)
+    if REVIEW_ISSUES:
+        problems.append(f"{len(set(REVIEW_ISSUES))} ta saralash qarori tekshiruv navbatida; sabablar saralash hisobotida saqlandi")
     if ready and not posted:
         problems.append(f"{len(ready)} ta nomzod bor edi, lekin hech biri post qilinmadi")
 
@@ -611,6 +716,8 @@ def run():
         db_stat = stats()
         if db_stat:
             lines.append(f"🗄 <b>Bazada saqlangan:</b> {db_stat.get('posted', 0)} ta grant")
+            if db_stat.get("review"):
+                lines.append(f"Tekshiruv navbatida: {db_stat['review']} ta")
         lines.append(f"📅 <b>Yurish vaqti:</b> {started.strftime('%Y-%m-%d %H:%M')} UTC")
         notify_admin("\n".join(lines))
 
@@ -618,6 +725,7 @@ def run():
 
 def run_with_recovery():
     """Restart only a known transient DB failure; Telegram uncertainty is final."""
+    selection_audit.reset()
     for attempt in range(3):
         try:
             return run()
@@ -641,3 +749,5 @@ if __name__ == "__main__":
                          "GitHub Actions logini va yuborish jurnalini tekshiring; "
                          "yetkazilgani tasdiqlangan post qayta yuborilmaydi.")
         raise
+    finally:
+        selection_audit.write_report()

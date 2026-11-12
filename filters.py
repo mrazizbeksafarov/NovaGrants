@@ -22,10 +22,10 @@ POSITIVE = re.compile(
     r"|phd\s+position|postdoc|masters?\s+program|undergraduate\s+program"
     r"|erasmus|chevening|fulbright|daad|mext|gks|vlir|nuffic|humphrey|mandela\s+washington"
     # o'zbekcha
-    r"|grant|stipendiya|ariza|tanlov|musobaqa|konkurs|imkoniyat|dastur|amaliyot"
+    r"|grant\w*|stipendiya\w*|ariza\w*|tanlov\w*|musobaqa\w*|konkurs\w*|imkoniyat\w*|dastur\w*|amaliyot\w*"
     r"|hujjat\s+qabul|qabul\s+boshlandi|ro'yxatdan\s+o'tish|bepul\s+ta'lim"
     # ruscha
-    r"|стипенди|грант|конкурс|заявк|обучени|бесплатн|стажировк"
+    r"|стипенди\w*|грант\w*|конкурс\w*|заявк\w*|обучени\w*|бесплатн\w*|стажировк\w*"
     r")\b",
     re.I,
 )
@@ -128,6 +128,23 @@ STRONG = re.compile(
     re.I,
 )
 
+# An old winners report does not become an open call by mentioning a deadline.
+RESULT_TITLE = re.compile(
+    r"winners?\s+announced|results?\s+(?:announced|published)|congratulations\s+to"
+    r"|meet\s+the\s+(?:winners|cohort)|natijalar\w*\s+(?:e.lon|ma.lum)"
+    r"|g.oliblar\s+aniqlandi|tabriklaymiz|(?:объявлены|опубликованы)\s+(?:результаты|победители)"
+    r"|победители\s+(?:объявлены|определены)|поздравляем", re.I)
+ORG_APPLICATION_ONLY = re.compile(
+    r"only\s+(?:eligible\s+|registered\s+)?(?:universities|institutions|organi[sz]ations|nonprofits?|consortia)"
+    r"\s+(?:may|can|are\s+eligible\s+to)\s+apply"
+    r"|applications?\s+must\s+be\s+submitted\s+by\s+(?:universities|organi[sz]ations|institutions)", re.I)
+PERSON_APPLICATION = re.compile(
+    r"(?:individuals?|students?|doctoral\s+candidates?|postdoctoral\s+researchers?|researchers?|scientists?|artists?|entrepreneurs?)"
+    r"(?:\s+(?:applicants?|candidates?))?\s+(?:may|can|are\s+eligible\s+to)\s+apply", re.I)
+OPEN_CALL = re.compile(
+    r"applications?\s+(?:are\s+)?(?:now\s+|currently\s+)?(?:open|reopened)\b"
+    r"|qabul\s+(?:boshlandi|qayta\s+ochildi)|при[её]м\s+заявок\s+открыт|снова\s+принимаются\s+заявки", re.I)
+
 # Sanani matndan topish uchun naqshlar
 _MONTHS = {
     "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3,
@@ -137,10 +154,12 @@ _MONTHS = {
     "yanvar": 1, "fevral": 2, "mart": 3, "aprel": 4, "may": 5,
     "iyun": 6, "iyul": 7, "avgust": 8, "sentabr": 9, "sentyabr": 9,
     "oktabr": 10, "oktyabr": 10, "noyabr": 11, "dekabr": 12,
+    "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
 }
 _DATE_PATTERNS = [
     # 31 December 2026 / 31 Dec, 2026
-    re.compile(r"\b(\d{1,2})(?:\s+|\s*[-–]\s*)([a-z]{3,9})[,\s]+(\d{4})\b", re.I),
+    re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+|\s*[-–]\s*)([a-zа-яё]{3,9})[,\s]+(\d{4})\b", re.I),
     # December 31, 2026 / Dec 31 2026
     re.compile(r"\b([a-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?[,\s]+(\d{4})\b", re.I),
     # 2026-12-31
@@ -150,32 +169,36 @@ _DATE_PATTERNS = [
 ]
 _DEADLINE_CONTEXT = re.compile(
     r"(deadline|apply\s+by|closing\s+date|closes\s+on|last\s+date|due\s+(by|date)"
-    r"|application[s]?\s+close|oxirgi\s+muddat|muddat)[^\n]{0,100}",
+    r"|application[s]?\s+close|on\s+or\s+before|oxirgi\s+muddat|muddat|срок\s+подачи(?:\s+заявок)?|крайний\s+срок|при[её]м\s+заявок\s+до)[\s:–-]*[^\n]{0,100}",
     re.I,
 )
 
 
-def looks_like_opportunity(title: str, summary: str, topic: str = "") -> bool:
+def opportunity_filter_reason(title: str, summary: str, topic: str = "") -> str:
     """Bu yozuv ochiq imkoniyatga o'xshaydimi?"""
     text = f"{title}\n{summary}"
 
     # Qo'llanma / namuna / "Top 20" ro'yxati — sarlavhada bo'lsa darrov rad etamiz
     if NOT_AN_OPPORTUNITY.search(title or ""):
-        return False
+        return "not_an_open_individual_opportunity"
+    if RESULT_TITLE.search(title or ""):
+        return "not_an_open_individual_opportunity"
+    if ORG_APPLICATION_ONLY.search(text) and not PERSON_APPLICATION.search(text):
+        return "not_an_open_individual_opportunity"
 
     # Tashkilotlar uchun grant — jismoniy shaxsga ishora bo'lmasa rad etamiz
-    if INSTITUTIONAL_ONLY.search(text) and not INDIVIDUAL_SIGNAL.search(text):
-        return False
+    if INSTITUTIONAL_ONLY.search(text) and not (INDIVIDUAL_SIGNAL.search(text) or PERSON_APPLICATION.search(text)):
+        return "not_an_open_individual_opportunity"
 
     if NEGATIVE.search(text):
         # Salbiy signal bor — faqat juda kuchli ijobiy signal bo'lsa o'tkazamiz
-        return bool(STRONG.search(text) and POSITIVE.search(text))
+        return "" if STRONG.search(text) and POSITIVE.search(text) else "news_or_marketing"
 
     if not POSITIVE.search(text):
-        return False
+        return "not_an_open_individual_opportunity"
 
     if POSITIVE.search(title or ""):
-        return True
+        return ""
 
     # Sarlavhada signal yo'q. Telegram postlarida sarlavha ko'pincha emoji yoki
     # qisqa gap bo'ladi, shuning uchun tanadagi dalilga qaraymiz. Quyidagilardan
@@ -184,9 +207,22 @@ def looks_like_opportunity(title: str, summary: str, topic: str = "") -> bool:
     #   • "to'liq grant", "fully funded", nufuzli dastur nomi (HIGH_VALUE)
     #   • imkoniyat so'zlari kamida ikki xil joyda uchrashi
     if STRONG.search(text) or HIGH_VALUE.search(text):
-        return True
+        return ""
 
-    return len(set(m.group(0).lower() for m in POSITIVE.finditer(text))) >= 2
+    return "" if len(set(m.group(0).lower() for m in POSITIVE.finditer(text))) >= 2 else "weak_opportunity_signal"
+
+
+def looks_like_opportunity(title: str, summary: str, topic: str = "") -> bool:
+    return not opportunity_filter_reason(title, summary, topic)
+
+
+def discovery_decision(title, summary, topic="", refresh_details=False):
+    if refresh_details and POSITIVE.search(title or "") and not RESULT_TITLE.search(title or ""):
+        return "candidate", "needs_fresh_official_details"
+    if deadline_passed(f"{title}\n{summary}"):
+        return "reject", "expired_secondary_announcement"
+    reason = opportunity_filter_reason(title, summary, topic)
+    return ("reject", reason) if reason else ("candidate", "needs_official_verification")
 
 
 def _try_build(y, m, d):
@@ -239,14 +275,21 @@ def extract_deadline(text: str, *, include_past: bool = False):
                         dt = _try_build(year, b, a)          # DD/MM
                     elif b > 12 >= a:
                         dt = _try_build(year, a, b)          # MM/DD
-                    else:
-                        dt = _try_build(year, b, a)          # noaniq -> DD/MM
+                    elif a == b:
+                        dt = _try_build(year, b, a)
+                    elif re.search(r"DD/MM|DD.MM", chunk, re.I):
+                        dt = _try_build(year, b, a)
+                    elif re.search(r"MM/DD|MM.DD", chunk, re.I):
+                        dt = _try_build(year, a, b)
+                    # Otherwise ambiguous numeric dates stay unknown.
                 if dt and (include_past or now <= dt) and dt <= horizon:
                     found.append(dt)
         return found
 
     # 1) "deadline ..." atrofidagi sanalar ustuvor
-    contexts = [m.group(0) for m in _DEADLINE_CONTEXT.finditer(text)]
+    contexts = [re.split(r"\b(?:event\s+(?:starts?|dates?)|programme?\s+(?:starts?|begins?|dates?)|course\s+starts?)\b",
+                         m.group(0), maxsplit=1, flags=re.I)[0]
+                for m in _DEADLINE_CONTEXT.finditer(text)]
     hits = [dt for ctx in contexts for dt in scan(ctx)]
     if not hits:
         return None
@@ -287,10 +330,26 @@ def deadline_passed(text: str) -> bool:
     """Matnda faqat o'tib ketgan sana bo'lsa True (ya'ni e'lon eskirgan)."""
     if not text:
         return False
-    if re.search(r"(applications?\s+(are\s+)?closed|deadline\s+(has\s+)?passed|muddat\s+tugagan)", text, re.I):
+    if (re.search(r"(applications?\s+(are\s+)?closed|deadline\s+(has\s+)?passed|muddat\s+tugagan|при[её]м\s+заявок\s+(?:заверш[её]н|закрыт)|заявки\s+не\s+принимаются)", text, re.I)
+            and not OPEN_CALL.search(text)):
         return True
     deadline = extract_deadline(text, include_past=True)
-    return bool(deadline and deadline < datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    ambiguous = []
+    for context in _DEADLINE_CONTEXT.finditer(text):
+        chunk = re.split(r"\b(?:event\s+(?:starts?|dates?)|programme?\s+(?:starts?|begins?|dates?)|course\s+starts?)\b",
+                         context.group(0), maxsplit=1, flags=re.I)[0]
+        if re.search(r"DD/MM|DD.MM|MM/DD|MM.DD", chunk, re.I):
+            continue
+        for match in _DATE_PATTERNS[3].finditer(chunk):
+            a, b, year = map(int, match.groups())
+            if 1 <= a <= 12 and 1 <= b <= 12 and a != b:
+                ambiguous.extend(dt for dt in (_try_build(year, a, b), _try_build(year, b, a)) if dt)
+    # Both interpretations must have expired; never guess one numeric format
+    # and discard a call that may still be open under the other interpretation.
+    if ambiguous and max(ambiguous) >= now:
+        return False
+    return bool((deadline and deadline < now) or (ambiguous and max(ambiguous) < now))
 
 
 if __name__ == "__main__":

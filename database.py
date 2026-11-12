@@ -29,6 +29,8 @@ Yangi ustunlar kerak — migration.sql ni Supabase SQL Editor da bir marta ishla
 """
 
 import os
+import json
+import hashlib
 import sys
 from datetime import datetime, timezone, timedelta
 
@@ -141,9 +143,62 @@ def _collect(column: str, values: list, posted_only: bool = False) -> set:
     return found
 
 
-def get_seen_source_keys(source_keys: list) -> set:
+def get_seen_source_keys(source_keys: list, incoming_titles=None) -> set:
     """Allaqachon ko'rib chiqilgan aggregator maqolalari."""
-    return _collect("source_key", source_keys)
+    if not supabase or not source_keys:
+        return set()
+    found = set()
+    years = {}
+    from selection_policy import cycle_hint
+    values = list(dict.fromkeys(k for k in source_keys if k))
+    for start in range(0, len(values), CHUNK):
+        response = execute_query(supabase.table(TABLE).select("source_key,title")
+            .in_("source_key", values[start:start+CHUNK])
+            .in_("status", ["posted", "skipped", "duplicate", "review"]))
+        found.update(r["source_key"] for r in response.data or [] if r.get("source_key"))
+        for row in response.data or []:
+            key = row.get("source_key")
+            year = cycle_hint(row.get("title"))
+            if key and year:
+                years[key] = max(year, years.get(key, 0))
+    if incoming_titles:
+        found = {key for key in found if not (
+            cycle_hint(incoming_titles.get(key)) and years.get(key)
+            and cycle_hint(incoming_titles[key]) > years[key])}
+    return found
+
+
+def posted_identity_rows(items):
+    if not supabase or not items:
+        return []
+    queries = {"url": [g.get("url") for g in items],
+               "url_key": [key for g in items for key in (g.get("url_key"), g.get("canonical_url_key"))],
+               "fingerprint": [g.get("fingerprint") for g in items]}
+    if HAS_SEMANTIC_SLUG:
+        queries["semantic_slug"] = [g.get("semantic_slug") for g in items]
+    rows = {}
+    for column, values in queries.items():
+        values = list(dict.fromkeys(value for value in values if value))
+        for start in range(0, len(values), CHUNK):
+            response = execute_query(supabase.table(TABLE).select("*")
+                .in_(column, values[start:start+CHUNK]).eq("status", "posted"))
+            rows.update((row["url_key"], row) for row in response.data or [])
+    return list(rows.values())
+
+
+def save_review(grant, reason):
+    """A review is a namespaced record, not an overwrite of an old public grant."""
+    from selection_policy import cycle_hint
+    source_key = grant.get("source_key") or grant.get("url_key") or grant.get("url")
+    if not source_key:
+        raise DatabaseWriteError("Tekshiruv yozuvi uchun manba kaliti yo'q")
+    identity = str(source_key) + "|" + str(cycle_hint(grant.get("title")) or "current")
+    key = "urn:novagrants:review:" + hashlib.sha256(identity.encode()).hexdigest()
+    fields = ("title", "url", "source_url", "source_key", "official_evidence_url", "summary")
+    payload = {"version": 1, "reason": reason, "grant": {k: grant[k] for k in fields if k in grant}}
+    row = {"url": key, "url_key": key, "source_key": source_key, "title": grant.get("title", "")[:255],
+           "source_url": json.dumps(payload, ensure_ascii=False), "status": "review", "reminder_sent": True}
+    _save_row(row)
 
 
 def get_seen_url_keys(url_keys: list) -> set:
@@ -291,7 +346,7 @@ def _save_row(row: dict, existing: dict = None, attempt: int = 0):
             raise
     else:
         try:
-            result = execute_query(supabase.table(TABLE).insert({**row, "reminder_sent": False}))
+            result = execute_query(supabase.table(TABLE).insert({"reminder_sent": False, **row}))
         except Exception as exc:
             code = str(getattr(exc, "code", ""))
             if code == "23505" or "23505" in str(exc) or "duplicate key" in str(exc).lower():
@@ -389,7 +444,7 @@ def stats() -> dict:
         return {}
     out = {}
     try:
-        for st in ("posted", "skipped", "duplicate"):
+        for st in ("posted", "skipped", "duplicate", "review"):
             r = execute_query(supabase.table(TABLE).select("id", count="exact").eq("status", st).limit(1))
             out[st] = r.count
     except Exception:
