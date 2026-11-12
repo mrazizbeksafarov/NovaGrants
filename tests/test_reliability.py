@@ -65,14 +65,18 @@ def test_missing_ai_key_is_not_a_successful_post(monkeypatch):
 
 
 def test_intentional_ai_rejection_is_distinct_from_failure(monkeypatch):
-    configure_ai(monkeypatch, [json.dumps({"headline": "No matches", "cards": []})])
-    content = ai_agent.generate_post_content([grant()])
+    g = {**grant(), "summary": "Only universities may apply."}
+    reply = {"headline": "No matches", "cards": [], "exclusions": [{"index": 1, "reason": "institution_only", "evidence": g["summary"]}]}
+    configure_ai(monkeypatch, [json.dumps(reply)])
+    content = ai_agent.generate_post_content([g])
     assert content is not None and content["cards"] == []
 
 
 def test_malformed_ai_json_shape_is_retried(monkeypatch):
-    configure_ai(monkeypatch, ['[]', '{"headline":"New","cards":[]}'])
-    assert ai_agent.generate_post_content([grant()])["cards"] == []
+    g = {**grant(), "summary": "Only universities may apply."}
+    reply = {"headline": "No matches", "cards": [], "exclusions": [{"index": 1, "reason": "institution_only", "evidence": g["summary"]}]}
+    configure_ai(monkeypatch, ['[]', json.dumps(reply)])
+    assert ai_agent.generate_post_content([g])["cards"] == []
 
 
 def test_missing_cards_is_not_an_intentional_rejection(monkeypatch):
@@ -109,6 +113,7 @@ def test_many_ai_keys_cannot_create_unbounded_retries(monkeypatch):
         raise RuntimeError("503")
     cli = SimpleNamespace(models=SimpleNamespace(generate_content=fail))
     monkeypatch.setattr(ai_agent, "API_KEYS", [f"test-{i}" for i in range(9)])
+    monkeypatch.setattr(ai_agent, "MODEL_CHAIN", ["model-a", "model-b", "model-c"])
     monkeypatch.setattr(ai_agent, "get_client", lambda *args: cli)
     monkeypatch.setattr(ai_agent.time, "sleep", lambda *args: None)
     assert ai_agent.generate_post_content([grant()]) is None
@@ -378,7 +383,8 @@ def test_cards_from_several_batches_share_one_digest(monkeypatch):
     grants = [grant(i) for i in range(10)]
     def pick_first(batch):
         g = batch[0]
-        return {"headline": "New", "cards": [{"name": g["title"], "url": g["url"], "_source": g}]}
+        return {"headline": "New", "cards": [{"name": g["title"], "url": g["url"], "_source": g}],
+                "rejected_urls": [item["url"] for item in batch[1:]]}
     monkeypatch.setattr(main, "generate_post_content", pick_first)
     posts, saved = [], []
     monkeypatch.setattr(main, "publish_post", lambda blocks, html: posts.append(blocks) or True)
@@ -406,7 +412,7 @@ def test_later_ai_failure_still_publishes_earlier_choices_then_reports(monkeypat
 def test_unverified_grants_are_not_recorded_as_rejected(monkeypatch):
     grants = [grant(i) for i in range(3)]
     content = {"headline": "New", "cards": [{"name": grants[0]["title"], "url": grants[0]["url"], "_source": grants[0]}],
-               "unverified_urls": [grants[1]["url"]]}
+               "unverified_urls": [grants[1]["url"]], "rejected_urls": [grants[2]["url"]]}
     monkeypatch.setattr(main, "generate_post_content", lambda batch: content)
     monkeypatch.setattr(main, "publish_post", lambda *args: True)
     saved = []

@@ -23,13 +23,17 @@ def item(n=1, **fields):
             "url": "https://inf.ethz.ch/studies/summer-research-fellowship.html",
             "url_key": "inf.ethz.ch/studies/summer-research-fellowship.html",
             "source_url": f"https://news.example/post/{n}", "source_key": f"news.example/post/{n}",
-            "summary": "Applicants of all nationalities may apply.", **fields}
+            "summary": "Applicants of all nationalities may apply. Applications are open. All research costs are covered. No application fee is charged.", **fields}
 
 
 def card(**fields):
     return {"index": 1, "name": "ETH Research Fellowship", "summary": "Moliyalashtiriladigan tadqiqot dasturi.",
             "url": item()["url"], "eligibility": "Bakalavr bosqichining so'nggi kursida o'qiyotgan talabalar",
             "eligibility_evidence": "Applicants of all nationalities may apply.",
+            "screening": {"uzbekistan": "confirmed", "applicant": "individual", "location": "no_foreign_prerequisite", "call_state": "open",
+                          "program": "research_fellowship", "funding": "full", "organizer": "university", "fee": "none", "fee_amount": None,
+                          "mandatory_costs": [], "scope_quote": "Applicants of all nationalities may apply.", "funding_quote": "All research costs are covered.",
+                          "call_quote": "Applications are open.", "fee_quote": "No application fee is charged."},
             "deadline_iso": "2027-12-15T23:59:59Z", **fields}
 
 
@@ -220,9 +224,10 @@ def test_modern_rich_design_has_one_application_action():
 
 def test_deadline_is_visible_outside_collapsed_details():
     blocks, _ = build_post("New", [card(benefits=["Funding"])])
-    deadline = next(b for b in blocks if b["type"] == "paragraph" and "date_time" in str(b))
+    deadline = next(b for b in blocks if b["type"] == "paragraph" and "Muddat: " in str(b))
     assert "15-dekabr, 2027" in str(deadline)
     assert str(deadline).count("15-dekabr, 2027") == 1
+    assert "date_time" not in str(deadline)
     assert all("date_time" not in str(b) for b in blocks if b["type"] == "details")
 
 

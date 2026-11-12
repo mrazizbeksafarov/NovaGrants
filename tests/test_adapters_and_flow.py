@@ -146,7 +146,7 @@ def test_full_run_deduplicates_publishes_and_persists(monkeypatch, capsys):
     monkeypatch.setattr(main, "init_db", lambda **kwargs: True)
     monkeypatch.setattr(main, "send_reminders", lambda: None)
     import official_evidence
-    official_html = "<main><h1>ETH Student Summer Research Fellowship</h1><p>Applicants of all nationalities may apply.</p><p>" + "Research programme for undergraduate students. " * 6 + "</p></main>"
+    official_html = "<main><h1>ETH Student Summer Research Fellowship</h1><p>Applicants of all nationalities may apply. Applications are open. All research costs are covered. No application fee is charged.</p><p>" + "Research programme for undergraduate students. " * 6 + "</p></main>"
     monkeypatch.setattr(official_evidence, "_get", lambda url: SimpleNamespace(
         status_code=200, url=url, text=official_html, content=official_html.encode()))
     monkeypatch.setattr(main, "notify_admin", lambda *args: True)

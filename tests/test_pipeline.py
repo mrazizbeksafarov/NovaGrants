@@ -374,8 +374,8 @@ def test_deduplicate_batch_ichidagi_va_kanonik_takrorlarni_tashlaydi():
     filtered = deduplicate(items)
     # KAUST MEWC ikkinchi marta takrorlanmasligi kerak, faqat 1 tasi va DAAD o'tishi kerak
     assert len(filtered) == 2
-    assert filtered[0]["url"] == "https://cemse.kaust.edu.sa/internship-opportunities/microelectronics-winter-camp-mewc"
-    assert filtered[1]["url"] == "https://daad.de/epos"
+    assert {g["url"] for g in filtered} == {
+        "https://cemse.kaust.edu.sa/internship-opportunities/microelectronics-winter-camp-mewc", "https://daad.de/epos"}
 
 
 def test_aggregator_havolasi_post_bolmaydi():
