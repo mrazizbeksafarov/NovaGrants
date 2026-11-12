@@ -174,9 +174,9 @@ def build_rich_blocks(headline: str, cards: list) -> list:
                                  "unix_time": int(dt.timestamp()), "date_time_format": "r"}
             except ValueError:
                 deadline_text = deadline
-            deadline_line = [{"type": "bold", "text": "Muddat: "}, deadline]
-            if isinstance(deadline_text, dict):
-                deadline_line.extend([" · ", deadline_text])
+            # The client can render a relative date as an absolute date too.
+            # One date node prevents "18-yanvar · 18-yanvar" on those clients.
+            deadline_line = [{"type": "bold", "text": "Muddat: "}, deadline_text]
             blocks.append({"type": "paragraph", "text": deadline_line})
         else:
             blocks.append({"type": "footer", "text": "Muddat ko'rsatilmagan"})

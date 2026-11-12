@@ -146,6 +146,11 @@ def get_seen_url_keys(url_keys: list) -> set:
     return _collect("url_key", url_keys, posted_only=True)
 
 
+def get_seen_urls(urls: list) -> set:
+    """Exact official URLs also identify legacy rows with source-based keys."""
+    return _collect("url", urls, posted_only=True)
+
+
 def get_seen_fingerprints(fingerprints: list) -> set:
     """Allaqachon post qilingan sarlavha barmoq izlari."""
     return _collect("fingerprint", fingerprints, posted_only=True)
@@ -242,35 +247,55 @@ def _grant_row(entry: dict) -> dict:
     return row
 
 
-def _save_row(row: dict, existing: dict = None):
+def _save_row(row: dict, existing: dict = None, attempt: int = 0):
     """Persist one row, protecting posted records even after an insert race."""
     if existing is None:
         response = (supabase.table(TABLE).select("url_key,status")
                     .eq("url_key", row["url_key"]).limit(1).execute())
         existing = response.data[0] if response.data else {}
+    # Older releases stored an official URL under an aggregator/source key.
+    # UNIQUE(url) and UNIQUE(url_key) are independent identities; inspect both.
+    url_response = (supabase.table(TABLE).select("url_key,status")
+                    .eq("url", row["url"]).limit(1).execute())
+    url_owner = url_response.data[0] if url_response.data else {}
+    if existing.get("status") == "posted" or url_owner.get("status") == "posted":
+        return
+    desired = row
+    if url_owner:
+        # If two legacy rows own the two identities, keep both rows and keys.
+        # Promote the URL owner; never delete source history or steal its key.
+        if existing and url_owner["url_key"] != row["url_key"]:
+            desired = {**row, "url_key": url_owner["url_key"]}
+        existing = url_owner
     if existing:
         # A successful post is immutable here (including deadline/reminder_sent).
         if existing.get("status") == "posted":
             return
-        query = supabase.table(TABLE).update(row).eq("url_key", row["url_key"])
+        query = supabase.table(TABLE).update(desired).eq("url_key", existing["url_key"])
         # Compare-and-set: a concurrent promotion to posted must never be overwritten.
         if existing.get("status") is None:
             query = query.is_("status", "null")
         else:
             query = query.eq("status", existing["status"])
-        result = query.execute()
+        try:
+            result = query.execute()
+        except Exception as exc:
+            if attempt < 2 and (str(getattr(exc, "code", "")) == "23505"
+                                or "23505" in str(exc) or "duplicate key" in str(exc).lower()):
+                return _save_row(row, attempt=attempt + 1)
+            raise
     else:
         try:
             result = supabase.table(TABLE).insert({**row, "reminder_sent": False}).execute()
         except Exception as exc:
             code = str(getattr(exc, "code", ""))
             if code == "23505" or "23505" in str(exc) or "duplicate key" in str(exc).lower():
-                response = (supabase.table(TABLE).select("url_key,status")
-                            .eq("url_key", row["url_key"]).limit(1).execute())
-                if response.data:
-                    return _save_row(row, response.data[0])
+                if attempt < 2:
+                    return _save_row(row, attempt=attempt + 1)
             raise
     if not result.data:
+        if attempt < 2:
+            return _save_row(row, attempt=attempt + 1)
         raise DatabaseWriteError("Baza yozishni tasdiqlamadi (RLS yoki parallel o'zgarish)")
 
 
