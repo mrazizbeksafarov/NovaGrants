@@ -571,7 +571,10 @@ def editorial_batches(items):
     batch, size = [], 0
     for grant in items:
         cost = len(str(grant.get("summary") or "")) + len(str(grant.get("title") or ""))
-        if batch and (len(batch) >= BATCH_SIZE or size + cost > 12000):
+        # Full screening plus quotes exceeds the free-tier output budget for
+        # several cards. One official programme per call was verified live.
+        limit = 1 if grant.get("official_evidence_url") or any(g.get("official_evidence_url") for g in batch) else BATCH_SIZE
+        if batch and (len(batch) >= limit or size + cost > 12000):
             yield batch
             batch, size = [], 0
         batch.append(grant)
