@@ -22,7 +22,6 @@ import json
 from pathlib import Path
 
 import requests
-from urllib.parse import urlencode
 from dotenv import load_dotenv
 from rich_schema import validate_blocks, rich_usage
 
@@ -238,9 +237,6 @@ def strip_tags_keep_links(html: str) -> str:
 _sent_messages = []
 _last_result = None
 
-SHARE_CHANNEL = "Nova_Grants"
-SHARE_TEXT = "Xalqaro grant va stipendiyalar — har kuni Nova Grants kanalida"
-SHARE_BUTTON_TEXT = "Do'stlarga ulashish"
 
 
 def _post(payload: dict, method: str = "sendMessage") -> tuple:
@@ -307,7 +303,7 @@ def send_telegram_message(text: str, target_chat_id: str = None) -> bool:
     chunks = split_message(text)
     print(f"Xabar {len(chunks)} qismga bo'lindi (eng kattasi {max(utf16_len(c) for c in chunks)} belgi).")
 
-    all_ok = True
+    sent_count = 0
     for i, chunk in enumerate(chunks, 1):
         payload = {
             "chat_id": chat_id,
@@ -323,6 +319,7 @@ def send_telegram_message(text: str, target_chat_id: str = None) -> bool:
                 _remember_sent()
                 print(f"  ✅ {i}/{len(chunks)}-qism yuborildi")
                 sent = True
+                sent_count += 1
                 break
 
             if err.startswith("429:"):
@@ -341,12 +338,14 @@ def send_telegram_message(text: str, target_chat_id: str = None) -> bool:
             time.sleep(2)
 
         if not sent:
-            all_ok = False
+            if sent_count:
+                raise DeliveryUncertain("HTML xabarning faqat bir qismi yetkazildi")
+            return False
 
         if i < len(chunks):
             time.sleep(PAUSE_BETWEEN)
 
-    return all_ok
+    return True
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -504,31 +503,19 @@ def _remember_sent():
         _sent_messages.append(_last_result)
 
 
-def share_url(first_message: dict) -> str:
-    """Telegram ulashish oynasi: kanal postining o'z havolasi + qisqa reklama matni."""
-    chat = first_message.get("chat") or {}
-    # Faqat ommaviy kanal postining havolasi bor. Shaxsiy chatda (masalan admin
-    # sinovida) chat.username — odamning shaxsiy username'i, uni ulashish xato.
-    username = chat.get("username") if chat.get("type") == "channel" else None
-    link = (f"https://t.me/{username}/{first_message['message_id']}" if username
-            else f"https://t.me/{SHARE_CHANNEL}")
-    return "https://t.me/share/url?" + urlencode({"url": link, "text": SHARE_TEXT})
+def fits_single_message(blocks: list, html_text: str) -> bool:
+    """Every fallback must fit too, before the first Telegram write."""
+    return (bool(blocks) and not validate_blocks(blocks)
+            and len(_split_blocks(blocks)) == 1
+            and len(_split_blocks(legacy_rich_blocks(blocks))) == 1
+            and bool(html_text.strip())
+            and len(split_message(sanitize_html(html_text))) == 1)
 
 
-def _attach_share_button():
-    """Postning eng pastiga keng "ulashish" tugmasi. Post allaqachon chiqqan —
-    tugma qo'shilmasa ham yurish muvaffaqiyatli hisoblanadi."""
-    if not _sent_messages:
-        return False
-    first, last = _sent_messages[0], _sent_messages[-1]
-    payload = {"chat_id": (last.get("chat") or {}).get("id"), "message_id": last["message_id"],
-               "reply_markup": {"inline_keyboard": [[{"text": SHARE_BUTTON_TEXT, "url": share_url(first)}]]}}
-    try:
-        ok, err = _post(payload, method="editMessageReplyMarkup")
-    except DeliveryUncertain:
-        ok, err = False, "javob noma'lum"
-    print("  Ulashish tugmasi qo'shildi." if ok else f"  Ulashish tugmasi qo'shilmadi: {err}")
-    return ok
+def publish_single(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
+    if not fits_single_message(blocks, html_text):
+        raise ValueError("Digest barcha formatlarda bitta xabarga sig'ishi kerak")
+    return publish(blocks, html_text, target_chat_id)
 
 
 def publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
@@ -538,10 +525,9 @@ def publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
     qaysi yo'l ishlashidan qat'i nazar mazmun va HAVOLALAR bir xil bo'ladi.
     """
     _sent_messages.clear()
-    delivered = _publish(blocks, html_text, target_chat_id)
-    if delivered:
-        _attach_share_button()
-    return delivered
+    # Telegram's native Forward preserves the original post and attribution.
+    # A share/url button only sends a link; it is not an equivalent action.
+    return _publish(blocks, html_text, target_chat_id)
 
 
 def _publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
@@ -555,14 +541,14 @@ def _publish(blocks: list, html_text: str, target_chat_id: str = None) -> bool:
             # yuborilganini qoldirib, xatoni oshkora bildiramiz.
             print(f"  ❌ Rich xabar {sent}-qismdan keyin uzildi. HTML zaxirasi "
                   f"YUBORILMADI (takror postning oldini olish uchun).")
-            return False
+            raise DeliveryUncertain("Rich xabarning faqat bir qismi yetkazildi")
         legacy = legacy_rich_blocks(blocks)
         if legacy != blocks and rich_messages_available():
             ok, sent = send_rich_message(legacy, html_to_plain(html_text), target_chat_id)
             if ok:
                 return True
             if sent:
-                return False
+                raise DeliveryUncertain("Legacy rich xabarning faqat bir qismi yetkazildi")
         print("  Rich message ishlamadi — HTML ko'rinishga o'tilmoqda.")
     return send_telegram_message(html_text, target_chat_id)
 

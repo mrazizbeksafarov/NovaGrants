@@ -4,10 +4,12 @@ O'zbekiston fuqarolari ariza topshira oladigan xalqaro stipendiya, fellowship,
 amaliyot, yozgi maktab, tanlov va yoshlar dasturlarini topib,
 [@Nova_Grants](https://t.me/Nova_Grants) kanaliga saralab beradigan bot.
 
-**2026-11-11 yangilanishi:** kod lokal `codex/reliability-audit` branchida.
-Production hali yangilanmagan. [Yakuniy audit](docs/FINAL_AUDIT_2026-11-11.md),
-[manbalar tekshiruvi](docs/SOURCES_2026-11-11.md),
-[xabar ko'rinishi namunasi](docs/post_preview.html).
+**2026-11-12 yangilanishi:** kunlik digest va yuborish jurnali.
+Telegram tasdig'idan keyingi baza xatosi postni qayta yuborishga olib kelmaydi;
+noaniq yuborishlar tekshiruvgacha bloklanadi.
+[Jurnal va tiklash tartibi](docs/delivery-journal.md),
+[oldingi audit](docs/FINAL_AUDIT_2026-11-11.md),
+[manbalar tekshiruvi](docs/SOURCES_2026-11-11.md).
 
 ## Qanday ishlaydi
 
@@ -15,7 +17,7 @@ Production hali yangilanmagan. [Yakuniy audit](docs/FINAL_AUDIT_2026-11-11.md),
 30 manba → mavzu / muddat filtri → avvalgi source kalitlari
          → rasmiy havola → bog'langan takror guruhlari
          → eligibility dalili bilan Gemini saralashi
-         → rich xabar → kanal → Supabase yozuvi
+         → saqlanadigan niyat → bitta rich xabar → Telegram tasdig‘i → grant yozuvi
 Supabase muddati yaqin posted yozuvlar → eslatma
 ```
 
@@ -49,7 +51,7 @@ va dependency audit qayta bajarilishi kerak.
 
 `.env.example` ni `.env` deb nusxalab to'ldiring. Production uchun:
 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `GEMINI_API_KEY` (yoki `GEMINI_API_KEYS`),
-`SUPABASE_URL`, `SUPABASE_KEY`. Gemini zanjiri ishlamasa `GROQ_API_KEY` bilan
+`SUPABASE_URL`, `SUPABASE_KEY`. Gemini o‘rniga yoki zanjir ishlamasa `GROQ_API_KEY` bilan
 `openai/gpt-oss-120b` zaxirasi ishlaydi. `ADMIN_ID` — ixtiyoriy kunlik/nosozlik hisoboti.
 
 Baza: `posted_grants` jadvali mavjud bo'lishi kerak. `migration.sql` mavjud
