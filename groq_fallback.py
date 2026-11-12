@@ -55,12 +55,12 @@ def request_content(system, prompt, schema):
     # A strict-schema generation that drifts is rejected with HTTP 400
     # (json_validate_failed); like 429/5xx it is transient, so retry once.
     global _last_editorial_call
-    if _last_editorial_call is not None:
-        pause = MIN_EDITORIAL_INTERVAL_SECONDS - (time.monotonic() - _last_editorial_call)
-        if pause > 0:
-            print(f"  Groq minutlik limiti uchun {int(pause)} s kutamiz...")
-            time.sleep(pause)
     for attempt in range(RETRIES + 1):
+        if _last_editorial_call is not None:
+            pause = MIN_EDITORIAL_INTERVAL_SECONDS - (time.monotonic() - _last_editorial_call)
+            if pause > 0:
+                print(f"  Groq minutlik limiti uchun {int(pause)} s kutamiz...")
+                time.sleep(pause)
         _last_editorial_call = time.monotonic()
         try:
             response = requests.post(

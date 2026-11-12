@@ -93,3 +93,24 @@ database access/RLS configuration is not changed by this selection release.
 Unknown Telegram write results are held for reconciliation, not replayed.
 These limits remain visible; a green workflow is not a claim of universal,
 permanent bug-free operation.
+
+## Production screening follow-up
+
+The first full production run on the new policy, `43215990563`, intentionally
+published nothing: Gemini exhausted its quota; a four-programme fallback request
+failed strict JSON validation and hit the rate limit; other otherwise useful
+cards had repairable public copy or unsupported quote formatting. The report
+distinguished those causes. This was not a database failure and no delivery claim
+was created.
+
+The richer screening schema now receives one official programme per request.
+The original two-programme smoke also reproduced the output-budget failure,
+whereas the single NL Scholarship request returned a valid publishable card.
+Retries now respect the editorial pacing interval too, rather than causing a
+second request five seconds after an already costly failed generation.
+Copy-only failures may use at most three small translation-repair requests per
+process. Screening facts and evidence remain unchanged; repaired copy must pass
+the same independent publication checks and preserve all numeric claims. Failed
+repairs remain retryable. Ordered literal evidence fragments use the existing
+supported-quote rule for eligibility too. Decision reasons are logged per input.
+This correction does not lower eligibility or financial-evidence requirements.

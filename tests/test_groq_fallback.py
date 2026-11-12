@@ -160,3 +160,19 @@ def test_editorial_calls_are_spaced_for_the_per_minute_token_limit(monkeypatch):
     clock[0] += 15
     groq_fallback.request_content("Editor", "Prompt", {})
     assert pauses == [45]
+
+
+def test_schema_error_retry_is_paced_before_the_next_generation(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setattr(groq_fallback, "MIN_EDITORIAL_INTERVAL_SECONDS", 60)
+    clock, times = [1000.0], []
+    monkeypatch.setattr(groq_fallback.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(groq_fallback.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0]+seconds))
+    def post(*args, **kwargs):
+        times.append(clock[0])
+        if len(times) == 1:
+            return SimpleNamespace(status_code=400, json=lambda: {"error": {"code": "json_validate_failed"}})
+        return SimpleNamespace(status_code=200, json=lambda: {"choices": [{"message": {"content": '{"cards":[]}'}}], "usage": {}})
+    monkeypatch.setattr(groq_fallback.requests, "post", post)
+    assert groq_fallback.request_content("Editor", "Prompt", {}) is not None
+    assert times[1]-times[0] >= 60
