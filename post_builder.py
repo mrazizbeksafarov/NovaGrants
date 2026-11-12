@@ -140,6 +140,10 @@ def build_rich_blocks(headline: str, cards: list) -> list:
         summary = _clean(card.get("summary"), 300)
         if summary:
             blocks.append({"type": "paragraph", "text": summary})
+        conditions = [str(c).strip() for c in card.get("conditions") or [] if str(c).strip()]
+        if conditions:
+            blocks.append({"type": "paragraph", "text": [
+                {"type": "bold", "text": "Muhim xarajatlar: "}, " ".join(conditions)]})
 
         # Yig'iladigan bo'lim: tafsilotlar postni cho'zmasin
         inner = []
@@ -167,6 +171,8 @@ def build_rich_blocks(headline: str, cards: list) -> list:
         if deadline:
             value = str(card["deadline_iso"])
             try:
+                if not card.get("deadline_is_exact"):
+                    raise ValueError("Calendar-only source date has no verified exact timestamp")
                 dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
@@ -222,6 +228,9 @@ def build_html(headline: str, cards: list) -> str:
         summary = _clean(card.get("summary"), 300)
         if summary:
             parts.append(_esc(summary))
+        conditions = [str(c).strip() for c in card.get("conditions") or [] if str(c).strip()]
+        if conditions:
+            parts.append("<b>Muhim xarajatlar:</b> " + _esc(" ".join(conditions)))
 
         detail_lines = []
         for b in benefits[1:]:

@@ -16,6 +16,7 @@ __pycache__/
 # Ish faylllari
 post_output.txt
 sample_post.txt
+selection_report.json
 *.log
 .DS_Store
 Thumbs.db

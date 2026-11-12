@@ -47,9 +47,10 @@ def _payload(row):
     return payload
 
 
-def _transition(row, before, after):
+def _transition(row, before, after, extra=None):
     token = uuid.uuid4().hex if before == "delivery_prepared" else row.get("fingerprint")
     changes = {"status": after}
+    changes.update(extra or {})
     if token:
         changes["fingerprint"] = token
     query = _client().update(changes).eq("url_key", row["url_key"]).eq("status", before)
@@ -105,11 +106,18 @@ def _send(row, sender):
     # Compare-and-set grants exactly one process permission to send.
     _transition(row, "delivery_prepared", "delivery_sending")
     # Exceptions deliberately leave `sending`: the server may have accepted it.
-    if not sender(payload["blocks"], payload["html"]):
+    delivery = sender(payload["blocks"], payload["html"])
+    if not delivery:
         # Only an explicit rejection with ZERO delivered parts can return False.
         _transition(row, "delivery_sending", "delivery_prepared")
         raise RuntimeError("Telegram xabarni rad etdi; keyingi yurishda qayta uriniladi")
-    _transition(row, "delivery_sending", "delivery_sent")
+    extra = None
+    if isinstance(delivery, dict):
+        if delivery.get("delivered") is not True:
+            raise UncertainDelivery("Publisher natijasi tasdiqlanmadi; qayta yuborilmadi")
+        payload["messages"] = delivery.get("messages", [])
+        extra = {"source_url": json.dumps(payload, ensure_ascii=False)}
+    _transition(row, "delivery_sending", "delivery_sent", extra)
     _finish(row)
     return payload["count"]
 
@@ -147,3 +155,52 @@ def deliver(target, kind, blocks, html, saves, sender, count, reminder_urls=()):
             if not row:
                 raise
     return _send(row, sender)
+
+
+def release_confirmed_deleted_digest(target, message_id):
+    """Operator-only: release a completed day after the user confirms deletion.
+
+    Never called by retries. The complete old intent is archived, not erased.
+    The daily reservation remains closed until every affected row is reconciled.
+    """
+    key = _key(target, "digest")
+    row = _get(key)
+    if not row or row["status"] != "delivery_done":
+        raise UncertainDelivery("Faqat to'liq yakunlangan digestning tasdiqlangan o'chirilishini tiklash mumkin")
+    payload = _payload(row)
+    known_ids = {r.get("message_id") for r in payload.get("messages", [])}
+    known_ids.update(r.get("message_id") for r in payload.get("corrections", []))
+    known_ids.discard(None)
+    if known_ids != {message_id}:
+        raise ValueError("O'chirilgan xabar identifikatori jurnalga aynan mos emas")
+    owners = {}
+    for entry in payload["saves"]:
+        expected = database._grant_row(entry)
+        response = execute_query(_client().select("*").eq("url", expected["url"]).limit(1))
+        owner = response.data[0] if response.data else None
+        if not owner or owner.get("status") == "removed":
+            continue
+        if entry.get("status", "posted") == "duplicate" and owner.get("status") == "posted":
+            continue  # an alias must not demote a different existing public post
+        if owner.get("status") != entry.get("status", "posted"):
+            raise database.DatabaseWriteError("Grant holati jurnalga mos emas; kunlik cheklov ochilmadi")
+        if (owner.get("fingerprint") and expected.get("fingerprint")
+                and owner["fingerprint"] != expected["fingerprint"]):
+            raise database.DatabaseWriteError("Grant boshqa versiyaga o'zgargan; kunlik cheklov ochilmadi")
+        owners[owner["url_key"]] = owner
+    for owner in owners.values():
+        result = execute_query(_client().update({"status": "removed"})
+            .eq("url_key", owner["url_key"]).eq("status", owner["status"]))
+        if not result.data:
+            latest = execute_query(_client().select("status").eq("url_key", owner["url_key"]))
+            if not latest.data or latest.data[0]["status"] != "removed":
+                raise database.DatabaseWriteError("O'chirilgan post yozuvlari tasdiqlanmadi")
+    archive_key = key + ":deleted:" + uuid.uuid4().hex
+    payload["deletion"] = {"message_id": message_id, "confirmed_by": "explicit_user_instruction",
+                           "at": datetime.now(timezone.utc).isoformat(), "previous_rows": list(owners.values())}
+    result = execute_query(_client().update({"url": archive_key, "url_key": archive_key,
+        "source_key": archive_key, "status": "delivery_deleted",
+        "source_url": json.dumps(payload, ensure_ascii=False)}).eq("url_key", key).eq("status", "delivery_done"))
+    if not result.data and (_get(key) or not _get(archive_key)):
+        raise database.DatabaseWriteError("Eski yuborish jurnali arxivlangani tasdiqlanmadi")
+    return archive_key
