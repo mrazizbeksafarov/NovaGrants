@@ -42,10 +42,16 @@ def test_groq_never_publishes_unsupported_eligibility_quote(monkeypatch):
 def test_groq_keeps_verified_cards_when_another_quote_is_invented(monkeypatch):
     first, second = item(1), item(2, url="https://other.example/award", url_key="other.example/award")
     good = card(index=1, eligibility_evidence=first["summary"])
-    bad = card(index=2, eligibility_evidence="Invented Uzbekistan guarantee")
-    monkeypatch.setattr(groq_fallback, "request_content",
-                        lambda *args: {"data": {"headline": "New", "cards": [good, bad]}, "usage": {}})
+    bad = card(index=1, eligibility_evidence="Invented Uzbekistan guarantee")
+    replies = [{"data": {"headline": "New", "cards": [good]}, "usage": {}},
+               {"data": {"headline": "New", "cards": [bad]}, "usage": {}}]
+    prompts = []
+    def one_by_one(system, prompt, schema):
+        prompts.append(prompt)
+        return replies.pop(0)
+    monkeypatch.setattr(groq_fallback, "request_content", one_by_one)
     content = ai_agent._groq_content([first, second])
+    assert len(prompts) == 2 and all("Imkoniyat 2" not in p for p in prompts)
     assert [c["url"] for c in content["cards"]] == [first["url"]]
     assert content["unverified_urls"] == [second["url"]]
 
@@ -176,3 +182,23 @@ def test_schema_error_retry_is_paced_before_the_next_generation(monkeypatch):
     monkeypatch.setattr(groq_fallback.requests, "post", post)
     assert groq_fallback.request_content("Editor", "Prompt", {}) is not None
     assert times[1]-times[0] >= 60
+
+
+def test_groq_failure_for_one_candidate_keeps_it_retryable(monkeypatch):
+    first, second = item(1), item(2, url="https://other.example/award", url_key="other.example/award")
+    replies = [None, {"data": {"headline": "New", "cards": [card(index=1, eligibility_evidence=second["summary"])]}, "usage": {"total": 5}}]
+    monkeypatch.setattr(groq_fallback, "request_content", lambda *args: replies.pop(0))
+    content = ai_agent._groq_content([first, second])
+    assert [c["url"] for c in content["cards"]] == [second["url"]]
+    assert first["url"] in content["unverified_urls"]
+
+
+def test_quota_on_one_key_does_not_disable_the_other_key(monkeypatch):
+    monkeypatch.setattr(ai_agent, "API_KEYS", ["key-a", "key-b"])
+    monkeypatch.setattr(ai_agent, "MODEL_CHAIN", ["model-a"])
+    monkeypatch.setattr(ai_agent, "_UNAVAILABLE_MODELS", set())
+    assert ai_agent._mark_unavailable("model-a", QuotaError("429 per day limit exceeded"), 0)
+    assert ai_agent.gemini_available()
+    assert ai_agent._usable_key("model-a") == 1
+    ai_agent._mark_unavailable("model-a", QuotaError("429 per day limit exceeded"), 1)
+    assert not ai_agent.gemini_available()

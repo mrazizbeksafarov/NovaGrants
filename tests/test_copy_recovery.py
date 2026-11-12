@@ -11,6 +11,19 @@ def test_official_screening_batches_use_one_page_with_all_evidence():
     assert max(map(len, batches)) == 1 and sum(map(len, batches)) == 15
 
 
+def test_every_official_candidate_in_daily_input_budget_gets_a_decision(monkeypatch):
+    rows = [item(n, url=f"https://official.example/{n}", official_evidence_url=f"https://official.example/{n}") for n in range(16)]
+    calls = []
+    monkeypatch.setattr(main, "DB_READY", False)
+    monkeypatch.setattr(main, "DRY_RUN", True)
+    def decide(batch):
+        calls.extend(batch)
+        return {"cards": [], "rejected_urls": [g["url"] for g in batch]}
+    monkeypatch.setattr(main, "generate_post_content", decide)
+    assert main.publish(rows) == 0
+    assert {g["url"] for g in calls} == {g["url"] for g in rows}
+
+
 def test_copy_repair_uses_a_smaller_schema_and_keeps_screening_evidence(monkeypatch):
     source = item()
     bad = card(eligibility="O'zbekiston fuqarolari, bakalavr talabalari")
@@ -61,3 +74,31 @@ def test_failed_copy_repair_leaves_the_card_unverified(monkeypatch):
     result, _ = ai_agent._repair_public_copy(data, [item()])
     reviewed = ai_agent._review_content({"headline": "Test", **result}, [item()], {})
     assert reviewed["cards"] == [] and reviewed["unverified_urls"] == [item()["url"]]
+
+
+def test_official_batches_follow_provider_availability(monkeypatch):
+    rows = [item(n, url=f"https://official.example/{n}", official_evidence_url=f"https://official.example/{n}",
+                 summary="x" * 3000) for n in range(9)]
+    monkeypatch.setattr(main.ai_agent, "gemini_available", lambda: True)
+    assert [len(b) for b in main.editorial_batches(rows)] == [4, 4, 1]
+    monkeypatch.setattr(main.ai_agent, "gemini_available", lambda: False)
+    assert [len(b) for b in main.editorial_batches(rows)] == [1] * 9
+
+
+def test_editorial_phase_stops_at_time_budget_and_leaves_rest_retryable(monkeypatch):
+    rows = [item(n, url=f"https://official.example/{n}", official_evidence_url=f"https://official.example/{n}") for n in range(6)]
+    monkeypatch.setattr(main, "DB_READY", False)
+    monkeypatch.setattr(main, "DRY_RUN", True)
+    monkeypatch.setattr(main.ai_agent, "gemini_available", lambda: False)
+    clock = [0.0]
+    monkeypatch.setattr(main.time, "monotonic", lambda: clock[0])
+    seen, saved = [], []
+    def decide(batch):
+        seen.extend(batch)
+        clock[0] += main.EDITORIAL_TIME_BUDGET_SECONDS / 2 + 1
+        return {"cards": [], "rejected_urls": [g["url"] for g in batch]}
+    monkeypatch.setattr(main, "generate_post_content", decide)
+    monkeypatch.setattr(main, "save_grants_batch", saved.extend)
+    assert main.publish(rows) == 0
+    assert len(seen) == 2
+    assert {row["grant"]["url"] for row in saved} == {g["url"] for g in seen}

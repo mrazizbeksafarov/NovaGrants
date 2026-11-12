@@ -33,7 +33,8 @@ from database import (
     save_review as _save_review, posted_identity_rows,
     get_grants_nearing_deadline, mark_reminder_sent as _mark_reminder_sent, stats,
 )
-from ai_agent import generate_post_content, BATCH_SIZE
+import ai_agent
+from ai_agent import generate_post_content, BATCH_SIZE, GEMINI_OFFICIAL_BATCH
 from official_evidence import verify_all as verify_official_pages
 from scraper import SOURCE_ISSUES
 from resilience import transient_error
@@ -51,7 +52,10 @@ from telegram_bot import (
 MAX_RESOLVE_PER_RUN = 80     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
 MAX_POST_PER_RUN = 32        # AI tekshiradigan nomzodlar; nashr — kuniga bitta digest
 MAX_DIGEST_CARDS = 8
-MAX_EDITORIAL_BATCHES = 8
+MAX_EDITORIAL_BATCHES = MAX_POST_PER_RUN
+# Saralash bosqichining vaqt chegarasi: Groq'ga tushilganda har nomzod ~1 daqiqa.
+# Workflow 90 daqiqada to'xtatiladi; yig'ish va rasmiy tekshiruvga joy qoldiriladi.
+EDITORIAL_TIME_BUDGET_SECONDS = 40 * 60
 RESOLVE_ISSUES = []
 PUBLISH_ISSUES = []
 REMINDER_ISSUES = []
@@ -453,9 +457,13 @@ def publish(items):
 
     # 1) AI barcha to'plamlarni ko'rib chiqadi. Post hali yuborilmaydi: aks holda
     # har to'plam (8 ta) o'z muqovasi bilan alohida, ko'pincha 1 grantli post bo'lardi.
+    editorial_started = time.monotonic()
     for number, batch in enumerate(editorial_batches(items), 1):
         if number > MAX_EDITORIAL_BATCHES:
             log("── Tahrir uchun so'rov chegarasi tugadi; qolgan nomzodlar keyingi yurishga qoldi.")
+            break
+        if time.monotonic() - editorial_started > EDITORIAL_TIME_BUDGET_SECONDS:
+            log("── Saralash vaqti chegarasi tugadi; qolgan nomzodlar keyingi yurishga qoldi.")
             break
         log(f"── {number}-to'plam: {len(batch)} ta imkoniyat AI ga yuborilmoqda...")
 
@@ -567,14 +575,21 @@ def publish(items):
 
 
 def editorial_batches(items):
-    """Keep larger official evidence inside a bounded per-request token budget."""
+    """Keep larger official evidence inside a bounded per-request token budget.
+
+    Lazily evaluated: provider availability is re-read before every batch. Gemini
+    (large context, ~20 free requests a day per model) gets several official
+    programmes per request; once only Groq is left, one programme per request,
+    because Groq's free per-minute token limit fits one full screening.
+    """
     batch, size = [], 0
     for grant in items:
         cost = len(str(grant.get("summary") or "")) + len(str(grant.get("title") or ""))
-        # Full screening plus quotes exceeds the free-tier output budget for
-        # several cards. One official programme per call was verified live.
-        limit = 1 if grant.get("official_evidence_url") or any(g.get("official_evidence_url") for g in batch) else BATCH_SIZE
-        if batch and (len(batch) >= limit or size + cost > 12000):
+        gemini = ai_agent.gemini_available()
+        official = grant.get("official_evidence_url") or any(g.get("official_evidence_url") for g in batch)
+        limit = (GEMINI_OFFICIAL_BATCH if gemini else 1) if official else BATCH_SIZE
+        budget = 26000 if gemini else 12000
+        if batch and (len(batch) >= limit or size + cost > budget):
             yield batch
             batch, size = [], 0
         batch.append(grant)

@@ -282,7 +282,7 @@ def test_large_official_evidence_is_batched_without_truncating_constraints():
 def test_model_transport_timeout_opens_circuit_for_the_rest_of_the_run(monkeypatch, error):
     monkeypatch.setattr(ai_agent, "_UNAVAILABLE_MODELS", set())
     assert ai_agent._mark_unavailable("test-model", error)
-    assert "test-model" in ai_agent._UNAVAILABLE_MODELS
+    assert ("test-model", 0) in ai_agent._UNAVAILABLE_MODELS
 
 
 def test_editorial_request_limit_leaves_unprocessed_grants_retryable(monkeypatch):
@@ -297,7 +297,7 @@ def test_editorial_request_limit_leaves_unprocessed_grants_retryable(monkeypatch
     monkeypatch.setattr(main, "publish_post", lambda *args: sends.append(True) or True)
     rows = [{**grant(n), "summary": "x" * 6000} for n in range(32)]
     assert main.publish(rows) == 8
-    assert len(calls) == 8 and len(sends) == 1
+    assert len(calls) == main.MAX_POST_PER_RUN and len(sends) == 1
     assert len(saves) == 8 and all(row["status"] == "posted" for row in saves)
 
 

@@ -35,16 +35,17 @@ import groq_fallback
 
 load_dotenv()
 
-# 2026-11-12: 3.6 Flash is primary because 3.8/3.7 Flash returned 504 after the full
-# 240 s deadline even for a one-word prompt, while 3.6 sorted the control set correctly
-# in ~12 s. Reorder via the GEMINI_MODELS Actions variable once 3.8 is stable.
+# 2026-11-12: 3.8/3.7 Flash still return 504 even for a one-word prompt; 3.6 and 3.5
+# Flash answer in ~1.5 s. Each model has its own free-tier daily quota, so 3.5 doubles
+# the Gemini capacity before the run falls back to Groq. Reorder via GEMINI_MODELS.
 MODEL_CHAIN = [m.strip() for m in os.getenv(
-    "GEMINI_MODELS", "gemini-3.6-flash"
+    "GEMINI_MODELS", "gemini-3.6-flash,gemini-3.5-flash"
 ).split(",") if m.strip()]
 if not MODEL_CHAIN:
     raise ValueError("GEMINI_MODELS bo'sh bo'lishi mumkin emas")
 MAX_ATTEMPTS = 4
 BATCH_SIZE = 8               # bitta so'rovga nechta imkoniyat
+GEMINI_OFFICIAL_BATCH = 4    # rasmiy sahifali nomzodlar: Gemini bitta so'rovda 4 tagacha
 AI_TIMEOUT_MS = int(os.getenv("AI_TIMEOUT_SECONDS", "240")) * 1000
 if AI_TIMEOUT_MS <= 0:
     raise ValueError("AI_TIMEOUT_SECONDS musbat son bo'lishi kerak")
@@ -55,21 +56,21 @@ if THINKING_LEVEL not in {"minimal", "low", "medium", "high"}:
 # "thinking" sozlamasini qabul qilmagan modellar
 _NO_THINKING_CONFIG = set()
 
-# Shu yurishda foydasiz bo'lgan modellar: kunlik bepul kvota tugagan (429, per day)
-# yoki to'liq kutish muddatida javob bermagan (504). Har to'plamda ularni qayta
-# kutish bir yurishga o'nlab daqiqa qo'shardi.
+# Shu yurishda foydasiz bo'lgan (model, kalit) juftlari: kunlik bepul kvota tugagan
+# (429, per day) yoki to'liq kutish muddatida javob bermagan (504). Kvota kalitga
+# bog'liq, shuning uchun bitta kalitning kvotasi boshqa kalitni o'chirmaydi.
 _UNAVAILABLE_MODELS = set()
 
 
-def _mark_unavailable(model: str, exc: Exception) -> bool:
+def _mark_unavailable(model: str, exc: Exception, key: int = 0) -> bool:
     msg = str(exc)
     code = getattr(exc, "code", None)
     daily_quota = code == 429 and ("per day" in msg.lower() or "PerDay" in msg)
     deadline = code == 504 or "DEADLINE_EXCEEDED" in msg or isinstance(exc, (TimeoutError, httpx.TimeoutException))
     if daily_quota or deadline:
-        _UNAVAILABLE_MODELS.add(model)
+        _UNAVAILABLE_MODELS.add((model, key))
         reason = "kunlik kvota tugagan" if daily_quota else "javob berish muddati tugadi"
-        print(f"  {model}: {reason} — bu yurishda boshqa ishlatilmaydi.")
+        print(f"  {model} (kalit #{key + 1}): {reason} — bu yurishda boshqa ishlatilmaydi.")
         return True
     return False
 
@@ -81,6 +82,21 @@ for i in range(1, 10):
     k = os.getenv(f"GEMINI_API_KEY_{i}")
     if k and k.strip() and k.strip() not in API_KEYS:
         API_KEYS.append(k.strip())
+
+
+def _usable_key(model: str, start: int = 0):
+    """Shu model uchun hali ishlatsa bo'ladigan birinchi kalit (start'dan aylanib)."""
+    count = max(1, len(API_KEYS))
+    for step in range(count):
+        key = (start + step) % count
+        if (model, key) not in _UNAVAILABLE_MODELS:
+            return key
+    return None
+
+
+def gemini_available() -> bool:
+    """Yurish davomida Gemini'da hali so'rov yuborsa bo'ladigan juftlik qoldimi."""
+    return bool(API_KEYS) and any(_usable_key(model) is not None for model in MODEL_CHAIN)
 
 
 @lru_cache(maxsize=10)
@@ -284,11 +300,12 @@ def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Opt
         return None
 
     for attempt in range(min(2, len(API_KEYS) * 2)):
-        cli = get_client(attempt % len(API_KEYS))
-        if not cli:
-            continue
         model = MODEL_CHAIN[attempt % min(2, len(MODEL_CHAIN))]
-        if model in _UNAVAILABLE_MODELS:
+        key = _usable_key(model, attempt)
+        if key is None:
+            continue
+        cli = get_client(key)
+        if not cli:
             continue
         try:
             cfg_kwargs = {}
@@ -305,7 +322,7 @@ def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Opt
                 if clean_ans in valid_candidates:
                     return clean_ans
         except Exception as exc:
-            if not _mark_unavailable(model, exc):
+            if not _mark_unavailable(model, exc, key):
                 print(f"  Havola AI xatosi ({model}): {type(exc).__name__}")
             continue
     return None
@@ -349,10 +366,11 @@ def generate_post_content(grants: list) -> dict:
     total_attempts = min(MAX_ATTEMPTS, len(plan))
 
     for attempt in range(total_attempts):
-        cli = get_client(attempt % num_keys)
         model = plan[attempt]
-        if model in _UNAVAILABLE_MODELS:
+        key = _usable_key(model, attempt)
+        if key is None:
             continue
+        cli = get_client(key)
         try:
             resp = cli.models.generate_content(
                 model=model, contents=prompt, config=_config_for(model))
@@ -364,14 +382,14 @@ def generate_post_content(grants: list) -> dict:
                 print(f"  {model} 'thinking' sozlamasini qo'llamaydi — sozlamasiz qayta urinamiz.")
                 continue
 
-            if _mark_unavailable(model, e):
+            if _mark_unavailable(model, e, key):
                 continue
 
             transient = getattr(e, "code", None) in {408, 429, 500, 502, 503, 504} or any(
                 c in msg for c in ("503", "429", "500", "504", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
             if transient:
                 wait = min(15 * (2 ** attempt), 60)
-                print(f"  {model} (kalit #{attempt % num_keys + 1}) band. Keyingi kalit/modelga o'tamiz...")
+                print(f"  {model} (kalit #{key + 1}) band. Keyingi kalit/modelga o'tamiz...")
                 if attempt + 1 < total_attempts:
                     time.sleep(wait)
                 continue
@@ -407,6 +425,32 @@ def generate_post_content(grants: list) -> dict:
 
 
 def _groq_content(grants):
+    """Groq'ning bepul minutlik token limiti bitta to'liq saralashga yetadi, xolos:
+    bir nechta nomzodli to'plam (Gemini uchun tuzilgan) bittalab ko'riladi."""
+    if len(grants) <= 1:
+        return _groq_single(grants)
+    merged = {"headline": "", "cards": [], "usage": {"provider": "groq", "total": 0},
+              "unverified_urls": [], "rejected_urls": [], "review": [], "decisions": [],
+              "audience_excluded_urls": []}
+    answered = False
+    for grant in grants:
+        part = _groq_single([grant])
+        if part is None:
+            merged["unverified_urls"].append(grant["url"])
+            merged["decisions"].append({"index": 1, "url": grant["url"], "title": grant.get("title", ""),
+                                        "state": "retry", "reason": "provider_unavailable"})
+            continue
+        answered = True
+        merged["headline"] = merged["headline"] or part.get("headline", "")
+        usage = part.get("usage") or {}
+        merged["usage"]["total"] += usage.get("total", 0)
+        merged["usage"]["model"] = usage.get("model", merged["usage"].get("model"))
+        for field in ("cards", "unverified_urls", "rejected_urls", "review", "decisions", "audience_excluded_urls"):
+            merged[field].extend(part.get(field) or [])
+    return merged if answered else None
+
+
+def _groq_single(grants):
     result = groq_fallback.request_content(SYSTEM_INSTRUCTION, _build_prompt(grants), PostContent.model_json_schema())
     if result is None:
         return None
