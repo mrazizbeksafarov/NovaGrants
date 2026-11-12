@@ -465,6 +465,10 @@ def publish(items):
         if time.monotonic() - editorial_started > EDITORIAL_TIME_BUDGET_SECONDS:
             log("── Saralash vaqti chegarasi tugadi; qolgan nomzodlar keyingi yurishga qoldi.")
             break
+        if not ai_agent.any_provider_available():
+            log("── Gemini va Groq'ning bugungi bepul kvotasi tugagan; qolgan nomzodlar keyingi yurishga qoldi.")
+            failure = failure or RuntimeError("AI provayderlarining kunlik kvotasi tugagan — grantlar keyingi yurishga qoldi")
+            break
         log(f"── {number}-to'plam: {len(batch)} ta imkoniyat AI ga yuborilmoqda...")
 
         content = generate_post_content(batch)

@@ -17,6 +17,26 @@ MAX_RATE_LIMIT_WAIT_SECONDS = 65
 # Two editorial batches inside one minute exceed that budget, so space them out.
 MIN_EDITORIAL_INTERVAL_SECONDS = 60
 _last_editorial_call = None
+# The free tier also caps tokens per day (200k). Once Groq reports that cap the
+# rest of the run cannot use it; waiting a minute per candidate only burns time.
+_daily_exhausted = False
+
+
+def available():
+    return configured() and not _daily_exhausted
+
+
+def _note_daily_cap(response):
+    global _daily_exhausted
+    try:
+        message = str((response.json().get("error") or {}).get("message", ""))
+    except (ValueError, AttributeError):
+        message = ""
+    if response.status_code == 429 and "per day" in message.lower():
+        _daily_exhausted = True
+        print("  Groq: kunlik token limiti tugagan — bu yurishda boshqa ishlatilmaydi.")
+        return True
+    return False
 
 
 def configured():
@@ -44,7 +64,7 @@ def strict_schema(schema):
 
 def request_content(system, prompt, schema):
     """One bounded call. Returned content still needs shared semantic validation."""
-    if not configured():
+    if not available():
         return None
     model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
     body = {"model": model, "messages": [{"role": "system", "content": system},
@@ -71,6 +91,8 @@ def request_content(system, prompt, schema):
             )
             if response.status_code != 200:
                 print(f"  Groq zaxirasi HTTP {response.status_code} ({_error_code(response)}).")
+                if _note_daily_cap(response):
+                    return None
                 if response.status_code in RETRY_STATUSES and attempt < RETRIES:
                     time.sleep(_retry_wait(response))
                     continue
@@ -93,7 +115,7 @@ def request_content(system, prompt, schema):
 
 def request_text(prompt, max_tokens=400):
     """Short plain-text answer (official-link choice). None on any failure; no retry."""
-    if not configured():
+    if not available():
         return None
     try:
         response = requests.post(
@@ -106,6 +128,7 @@ def request_text(prompt, max_tokens=400):
         )
         if response.status_code != 200:
             print(f"  Havola AI (Groq) HTTP {response.status_code} ({_error_code(response)}).")
+            _note_daily_cap(response)
             return None
         return (response.json()["choices"][0]["message"]["content"] or "").strip()
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:

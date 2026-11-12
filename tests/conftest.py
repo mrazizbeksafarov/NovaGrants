@@ -39,3 +39,7 @@ def no_groq_pacing(monkeypatch):
     import groq_fallback
     monkeypatch.setattr(groq_fallback, "MIN_EDITORIAL_INTERVAL_SECONDS", 0)
     monkeypatch.setattr(groq_fallback, "_last_editorial_call", None)
+    monkeypatch.setattr(groq_fallback, "_daily_exhausted", False)
+    # Offline tests have no AI keys; provider exhaustion is exercised explicitly.
+    import ai_agent
+    monkeypatch.setattr(ai_agent, "any_provider_available", lambda: True)

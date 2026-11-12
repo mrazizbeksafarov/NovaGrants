@@ -39,7 +39,7 @@ load_dotenv()
 # Flash answer in ~1.5 s. Each model has its own free-tier daily quota, so 3.5 doubles
 # the Gemini capacity before the run falls back to Groq. Reorder via GEMINI_MODELS.
 MODEL_CHAIN = [m.strip() for m in os.getenv(
-    "GEMINI_MODELS", "gemini-3.6-flash,gemini-3.5-flash"
+    "GEMINI_MODELS", "gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite"
 ).split(",") if m.strip()]
 if not MODEL_CHAIN:
     raise ValueError("GEMINI_MODELS bo'sh bo'lishi mumkin emas")
@@ -97,6 +97,10 @@ def _usable_key(model: str, start: int = 0):
 def gemini_available() -> bool:
     """Yurish davomida Gemini'da hali so'rov yuborsa bo'ladigan juftlik qoldimi."""
     return bool(API_KEYS) and any(_usable_key(model) is not None for model in MODEL_CHAIN)
+
+
+def any_provider_available() -> bool:
+    return gemini_available() or groq_fallback.available()
 
 
 @lru_cache(maxsize=10)
