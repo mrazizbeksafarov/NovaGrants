@@ -8,6 +8,7 @@ amaliyot, yozgi maktab, tanlov va yoshlar dasturlarini topib,
 Telegram tasdig'idan keyingi baza xatosi postni qayta yuborishga olib kelmaydi;
 noaniq yuborishlar tekshiruvgacha bloklanadi.
 [Jurnal va tiklash tartibi](docs/delivery-journal.md),
+[uzilishlarga qarshi himoya](docs/RELIABILITY_2026-11-12.md),
 [oldingi audit](docs/FINAL_AUDIT_2026-11-11.md),
 [manbalar tekshiruvi](docs/SOURCES_2026-11-11.md).
 
@@ -16,7 +17,7 @@ noaniq yuborishlar tekshiruvgacha bloklanadi.
 ```text
 30 manba → mavzu / muddat filtri → avvalgi source kalitlari
          → rasmiy havola → bog'langan takror guruhlari
-         → eligibility dalili bilan Gemini saralashi
+         → rasmiy sahifa dalillari → eligibility dalili bilan AI saralashi
          → saqlanadigan niyat → bitta rich xabar → Telegram tasdig‘i → grant yozuvi
 Supabase muddati yaqin posted yozuvlar → eslatma
 ```

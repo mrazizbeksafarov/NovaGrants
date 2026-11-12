@@ -26,11 +26,13 @@ import http_client
 from sources import enabled_sources
 from link_resolver import clean_url, url_key, is_blocked, is_aggregator, host_of, _collect_candidates
 from opportunity_content import opportunity_summary
+from rich_schema import valid_web_url
 
 TIMEOUT = 25
 MAX_PER_SOURCE = 60          # bitta manbadan ko'pi bilan shuncha yangi yozuv
 SUMMARY_LIMIT = 1800
 MAX_RETRY = 2                # 429 / vaqtinchalik xatolarda qayta urinish
+SOURCE_ISSUES = []
 
 # ── YANGILIK CHEGARASI ────────────────────────────────────────────────────
 # Ilgari na RSS, na Telegram uchun sana tekshirilmasdi. Natijada 2021-yilda
@@ -95,6 +97,7 @@ def _fetch_feed(url, source_id):
                 time.sleep(3 * (attempt + 1))
                 continue
             print(f"  [{source_id}] ulanib bo'lmadi")
+            SOURCE_ISSUES.append(source_id)
             return None
 
         if resp.status_code == 200:
@@ -106,11 +109,13 @@ def _fetch_feed(url, source_id):
             delay = float(retry_after) if retry_after.isdigit() else 5.0 * (attempt + 1)
             if delay > 20:
                 print(f"  [{source_id}] Retry-After {delay:.0f}s — keyingi yurishga qoldi")
+                SOURCE_ISSUES.append(source_id)
                 return None
             time.sleep(delay)
             continue
 
         print(f"  [{source_id}] HTTP {resp.status_code}")
+        SOURCE_ISSUES.append(source_id)
         return None
     return None
 
@@ -234,9 +239,11 @@ def scrape_telegram(src):
     resp = _session.get(f"https://t.me/s/{ch}", timeout=TIMEOUT)
     if resp is None:
         print(f"  [{src['id']}] ulanib bo'lmadi")
+        SOURCE_ISSUES.append(src["id"])
         return out
     if resp.status_code != 200:
         print(f"  [{src['id']}] HTTP {resp.status_code}")
+        SOURCE_ISSUES.append(src["id"])
         return out
     try:
         soup = BeautifulSoup(resp.text, "html.parser")
@@ -341,14 +348,19 @@ def _fetch_one(src):
     if not fn:
         return []
     try:
-        return fn(src)
+        rows = fn(src)
+        if not isinstance(rows, list):
+            raise TypeError("Manba natijasi ro'yxat emas")
+        return rows
     except Exception as e:
-        print(f"  [{src['id']}] kutilmagan xatolik: {type(e).__name__}: {e}")
+        print(f"  [{src['id']}] kutilmagan xatolik: {type(e).__name__}")
+        SOURCE_ISSUES.append(src["id"])
         return []
 
 
 def fetch_all():
     """Barcha faol manbalardan yig'ib, manba havolasi bo'yicha takrorlarni tashlaydi."""
+    SOURCE_ISSUES.clear()
     srcs = enabled_sources()
     print(f"Ma'lumot yig'ilmoqda — {len(srcs)} ta manba...")
 
@@ -361,6 +373,14 @@ def fetch_all():
     seen = set()
     unique = []
     for item in collected:
+        if (not isinstance(item, dict) or not isinstance(item.get("title"), str)
+                or not item["title"].strip() or not valid_web_url(item.get("url"))):
+            print("  Manbaning buzilgan yozuvi tashlandi; qolganlari ishlatiladi.")
+            continue
+        item = dict(item)
+        for field in ("summary", "topic", "source_id", "kind"):
+            if not isinstance(item.get(field), str):
+                item[field] = ""
         key = url_key(item["url"])
         if not key or key in seen:
             continue
