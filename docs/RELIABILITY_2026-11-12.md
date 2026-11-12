@@ -45,8 +45,10 @@ official page evidence in place of the aggregator summary, up to 6,000 character
 The extractor prioritizes late exclusions and applicant costs, including bullets
 following a "Costs Not Covered" heading. Editorial batches are limited to eight
 items and approximately 12,000 input characters so the expanded evidence does not
-silently disappear or balloon every request. Existing quote and copy validation
-still applies to both providers. If an entire official-evidence stage is
+silently disappear or balloon every request. At most eight editorial batches are processed;
+overflow is not marked rejected. A model that reaches its transport timeout is
+not repeatedly waited for in subsequent batches of the same process. Existing
+quote and copy validation still applies to both providers. If an entire official-evidence stage is
 unavailable, no unverified public post is emitted and the run reports the problem.
 
 ## Deployment protection

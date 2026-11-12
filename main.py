@@ -46,6 +46,7 @@ from telegram_bot import (
 MAX_RESOLVE_PER_RUN = 80     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
 MAX_POST_PER_RUN = 32        # AI tekshiradigan nomzodlar; nashr — kuniga bitta digest
 MAX_DIGEST_CARDS = 8
+MAX_EDITORIAL_BATCHES = 8
 RESOLVE_ISSUES = []
 RESOLVE_WORKERS = 14         # superkompyuter parallel oqimlari (har bir domen alohida throttle nazoratida)
 
@@ -412,6 +413,9 @@ def publish(items):
     # 1) AI barcha to'plamlarni ko'rib chiqadi. Post hali yuborilmaydi: aks holda
     # har to'plam (8 ta) o'z muqovasi bilan alohida, ko'pincha 1 grantli post bo'lardi.
     for number, batch in enumerate(editorial_batches(items), 1):
+        if number > MAX_EDITORIAL_BATCHES:
+            log("── Tahrir uchun so'rov chegarasi tugadi; qolgan nomzodlar keyingi yurishga qoldi.")
+            break
         log(f"── {number}-to'plam: {len(batch)} ta imkoniyat AI ga yuborilmoqda...")
 
         content = generate_post_content(batch)

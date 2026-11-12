@@ -18,6 +18,7 @@ import os
 import re
 import json
 import time
+import httpx
 from datetime import datetime, timezone
 from typing import List, Optional
 from functools import lru_cache
@@ -63,10 +64,10 @@ def _mark_unavailable(model: str, exc: Exception) -> bool:
     msg = str(exc)
     code = getattr(exc, "code", None)
     daily_quota = code == 429 and ("per day" in msg.lower() or "PerDay" in msg)
-    deadline = code == 504 or "DEADLINE_EXCEEDED" in msg
+    deadline = code == 504 or "DEADLINE_EXCEEDED" in msg or isinstance(exc, (TimeoutError, httpx.TimeoutException))
     if daily_quota or deadline:
         _UNAVAILABLE_MODELS.add(model)
-        reason = "kunlik kvota tugagan" if daily_quota else "javob bermadi (504)"
+        reason = "kunlik kvota tugagan" if daily_quota else "javob berish muddati tugadi"
         print(f"  {model}: {reason} — bu yurishda boshqa ishlatilmaydi.")
         return True
     return False

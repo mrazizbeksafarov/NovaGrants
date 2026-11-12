@@ -278,6 +278,29 @@ def test_large_official_evidence_is_batched_without_truncating_constraints():
     assert all("critical final restriction" in ai_agent._build_prompt(b) for b in batches)
 
 
+@pytest.mark.parametrize("error", [httpx.ReadTimeout("deadline"), TimeoutError("deadline")])
+def test_model_transport_timeout_opens_circuit_for_the_rest_of_the_run(monkeypatch, error):
+    monkeypatch.setattr(ai_agent, "_UNAVAILABLE_MODELS", set())
+    assert ai_agent._mark_unavailable("test-model", error)
+    assert "test-model" in ai_agent._UNAVAILABLE_MODELS
+
+
+def test_editorial_request_limit_leaves_unprocessed_grants_retryable(monkeypatch):
+    monkeypatch.setattr(main, "DB_READY", False)
+    calls, saves, sends = [], [], []
+    def select(batch):
+        calls.append(batch)
+        g = batch[0]
+        return {"cards": [{"name": g["title"], "url": g["url"], "_source": g}]}
+    monkeypatch.setattr(main, "generate_post_content", select)
+    monkeypatch.setattr(main, "save_grants_batch", saves.extend)
+    monkeypatch.setattr(main, "publish_post", lambda *args: sends.append(True) or True)
+    rows = [{**grant(n), "summary": "x" * 6000} for n in range(32)]
+    assert main.publish(rows) == 8
+    assert len(calls) == 8 and len(sends) == 1
+    assert len(saves) == 8 and all(row["status"] == "posted" for row in saves)
+
+
 def test_pipeline_keeps_healthy_programme_when_another_official_page_is_down(monkeypatch):
     db = use_database(monkeypatch)
     rows = [grant(1), grant(2)]
