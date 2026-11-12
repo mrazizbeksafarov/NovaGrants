@@ -200,7 +200,7 @@ def resolve_official_url_with_ai(title: str, text: str, candidates: list) -> Opt
     Agregator, ijtimoiy tarmoq yoki reklama havolalarini qat'iyan rad etadi.
     Faqat original tashkilot yoki dasturning haqiqiy veb-saytini tanlaydi.
     """
-    if not API_KEYS or not candidates:
+    if not candidates or (not API_KEYS and not groq_fallback.configured()):
         return None
 
     valid_candidates = []

@@ -1,7 +1,6 @@
 """Global-source, selection-quality and Bot API 10.4 regressions."""
 
 import json
-from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -398,50 +397,17 @@ def test_ai_headline_cannot_label_partial_awards_fully_funded(monkeypatch):
     assert "Barchasi to'liq" not in captured[0][1]
 
 
-def test_share_button_links_the_channel_post_itself():
-    from urllib.parse import parse_qs, urlparse
-    url = telegram_bot.share_url({"message_id": 512, "chat": {"id": -100, "type": "channel", "username": "Nova_Grants"}})
-    query = parse_qs(urlparse(url).query)
-    assert url.startswith("https://t.me/share/url?")
-    assert query["url"] == ["https://t.me/Nova_Grants/512"]
-    assert "Nova Grants" in query["text"][0]
-
-
-def test_share_button_is_added_to_last_part_after_delivery(monkeypatch):
+def test_publish_preserves_native_forward_without_a_link_share_button(monkeypatch):
     monkeypatch.setattr(telegram_bot, "BOT_TOKEN", "test")
     monkeypatch.setattr(telegram_bot, "CHANNEL_ID", "@Nova_Grants")
     monkeypatch.setattr(telegram_bot, "_rich_supported", True)
-    calls, next_id = [], [100]
+    calls = []
     def post(payload, method="sendMessage"):
         calls.append((method, payload))
-        if method == "sendRichMessage":
-            telegram_bot._last_result = {"message_id": next_id[0], "chat": {"id": -100, "type": "channel", "username": "Nova_Grants"}}
-            next_id[0] += 1
         return True, ""
     monkeypatch.setattr(telegram_bot, "_post", post)
     blocks, html = build_post("New", [card()])
-    assert telegram_bot.publish(blocks, html)
-    method, payload = calls[-1]
-    assert method == "editMessageReplyMarkup" and payload["message_id"] == 100
-    button = payload["reply_markup"]["inline_keyboard"][0][0]
-    assert "Nova_Grants%2F100" in button["url"]
-
-
-def test_failed_share_button_does_not_fail_the_delivered_post(monkeypatch):
-    monkeypatch.setattr(telegram_bot, "BOT_TOKEN", "test")
-    monkeypatch.setattr(telegram_bot, "CHANNEL_ID", "@Nova_Grants")
-    monkeypatch.setattr(telegram_bot, "_rich_supported", True)
-    def post(payload, method="sendMessage"):
-        if method == "editMessageReplyMarkup":
-            return False, "Bad Request"
-        telegram_bot._last_result = {"message_id": 7, "chat": {"id": -100, "type": "channel", "username": "Nova_Grants"}}
-        return True, ""
-    monkeypatch.setattr(telegram_bot, "_post", post)
-    blocks, html = build_post("New", [card()])
-    assert telegram_bot.publish(blocks, html) is True
-
-
-def test_share_link_never_uses_a_private_chat_username():
-    from urllib.parse import parse_qs, urlparse
-    url = telegram_bot.share_url({"message_id": 95, "chat": {"id": 7, "type": "private", "username": "someone"}})
-    assert parse_qs(urlparse(url).query)["url"] == ["https://t.me/Nova_Grants"]
+    assert telegram_bot.publish_single(blocks, html)
+    assert len(calls) == 1 and calls[0][0] == "sendRichMessage"
+    assert "protect_content" not in calls[0][1]
+    assert "share/url" not in str(calls)

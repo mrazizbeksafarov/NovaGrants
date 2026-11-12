@@ -17,6 +17,7 @@ import os
 import sys
 import time
 import concurrent.futures
+import delivery_journal
 from datetime import datetime, timezone
 
 from scraper import fetch_all
@@ -34,12 +35,13 @@ from ai_agent import generate_post_content, BATCH_SIZE
 from post_builder import build_post, usable_cards
 from telegram_bot import (
     send_telegram_message as _send_telegram_message,
-    publish as _publish,
+    publish_single as _publish, fits_single_message, CHANNEL_ID,
     notify_admin,
 )
 
 MAX_RESOLVE_PER_RUN = 80     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
-MAX_POST_PER_RUN = 32        # bir kunda kanalga nechta yangi imkoniyat (4 ta post)
+MAX_POST_PER_RUN = 32        # AI tekshiradigan nomzodlar; nashr — kuniga bitta digest
+MAX_DIGEST_CARDS = 8
 RESOLVE_WORKERS = 14         # superkompyuter parallel oqimlari (har bir domen alohida throttle nazoratida)
 
 # Quruq sinov: hech narsa yuborilmaydi va bazaga yozilmaydi.
@@ -120,6 +122,11 @@ def publish_post(blocks, html):
 # ──────────────────────────────────────────────────────────────────
 def send_reminders():
     log("── Muddati yaqinlashgan grantlar tekshirilmoqda...")
+    if DB_READY and not DRY_RUN:
+        resumed = delivery_journal.resume(CHANNEL_ID, "reminder", publish_post)
+        if resumed is not None:
+            log("   Bugungi eslatma jurnali tiklandi yoki allaqachon yuborilgan.")
+            return
     grants = get_grants_nearing_deadline(days=5)
 
     if not grants:
@@ -145,6 +152,10 @@ def send_reminders():
             continue                              # muddat o'tib ketgan yoki ishonchsiz
         valid.append(g)
 
+    # Keep the complete reminder, including its HTML fallback, in one message.
+    # Unselected rows remain reminder_sent=False for another day.
+    valid = valid[:8]
+
     if leaked:
         log(f"   {leaked} ta eski aggregator havolasi eslatmadan chiqarildi.")
 
@@ -152,37 +163,55 @@ def send_reminders():
         log("   Eslatma uchun yaroqli yozuv yo'q.")
         return
 
-    # Rich ko'rinish: sarlavha + har bir imkoniyat uchun havolali qator
-    blocks = [
-        {"type": "heading", "size": 2, "text": "Oxirgi muddat yaqinlashmoqda"},
-        {"type": "paragraph",
-         "text": "Quyidagi imkoniyatlar uchun hujjat topshirish muddati tugayapti."},
-        {"type": "divider"},
-        # Har bir element InputRichBlockListItem: ichida `blocks` bo'ladi
-        {"type": "list", "items": [
-            {"blocks": [{"type": "paragraph", "text": [
-                {"type": "url", "url": g["url"], "text": str(g["title"])[:120]},
-                f" — {_deadline_label(g.get('deadline'))}",
-            ]}]} for g in valid
-        ]},
-        {"type": "paragraph", "text": "Kechikkan ariza qabul qilinmaydi."},
-        {"type": "footer", "text": CHANNEL_TAG},
-    ]
+    def render_reminder(valid):
+        # Rich ko'rinish: sarlavha + har bir imkoniyat uchun havolali qator
+        blocks = [
+            {"type": "heading", "size": 2, "text": "Oxirgi muddat yaqinlashmoqda"},
+            {"type": "paragraph",
+             "text": "Quyidagi imkoniyatlar uchun hujjat topshirish muddati tugayapti."},
+            {"type": "divider"},
+            # Har bir element InputRichBlockListItem: ichida `blocks` bo'ladi
+            {"type": "list", "items": [
+                {"blocks": [{"type": "paragraph", "text": [
+                    {"type": "url", "url": g["url"], "text": str(g["title"])[:120]},
+                    f" — {_deadline_label(g.get('deadline'))}",
+                ]}]} for g in valid
+            ]},
+            {"type": "paragraph", "text": "Kechikkan ariza qabul qilinmaydi."},
+            {"type": "footer", "text": CHANNEL_TAG},
+        ]
 
-    # HTML zaxira — xuddi shu ma'lumotdan
-    html = ["<b>Oxirgi muddat yaqinlashmoqda</b>", "",
-            "Quyidagi imkoniyatlar uchun hujjat topshirish muddati tugayapti:", ""]
-    for i, g in enumerate(valid, 1):
-        html.append(f'{i}. <a href="{_esc_attr(g["url"])}">{_esc(str(g["title"])[:120])}</a>')
-        html.append(f"   <i>Muddat: {_deadline_label(g.get('deadline'))}</i>")
+        # HTML zaxira — xuddi shu ma'lumotdan
+        html = ["<b>Oxirgi muddat yaqinlashmoqda</b>", "",
+                "Quyidagi imkoniyatlar uchun hujjat topshirish muddati tugayapti:", ""]
+        for i, g in enumerate(valid, 1):
+            html.append(f'{i}. <a href="{_esc_attr(g["url"])}">{_esc(str(g["title"])[:120])}</a>')
+            html.append(f"   <i>Muddat: {_deadline_label(g.get('deadline'))}</i>")
+            html.append("")
+        html.append("Kechikkan ariza qabul qilinmaydi.")
         html.append("")
-    html.append("Kechikkan ariza qabul qilinmaydi.")
-    html.append("")
-    html.append(CHANNEL_TAG)
+        html.append(CHANNEL_TAG)
 
-    if publish_post(blocks, "\n".join(html)):
-        for g in valid:
-            mark_reminder_sent(g.get("url", ""))
+        html = "\n".join(html)
+        return blocks, html
+
+    while valid:
+        blocks, html = render_reminder(valid)
+        if fits_single_message(blocks, html):
+            break
+        valid = valid[:-1]
+    if not valid:
+        raise RuntimeError("Eslatma bitta xabarga sig'madi; yuborish boshlanmadi")
+    if DB_READY and not DRY_RUN:
+        delivered = delivery_journal.deliver(
+            CHANNEL_ID, "reminder", blocks, html, [], publish_post, len(valid),
+            reminder_urls=[g["url"] for g in valid])
+    else:
+        delivered = publish_post(blocks, html)
+    if delivered:
+        if DRY_RUN or not DB_READY:
+            for g in valid:
+                mark_reminder_sent(g.get("url", ""))
         log(f"   {len(valid)} ta eslatma " + ("tayyorlandi (quruq sinov)." if DRY_RUN else "yuborildi."))
     else:
         log("   Eslatma yuborilmadi — keyingi safar qayta urinamiz.")
@@ -343,13 +372,18 @@ def enrich_deadlines(items):
 
 def publish(items):
     """6-bosqich: AI matn yozadi va kanalga chiqaramiz."""
+    if DB_READY and not DRY_RUN:
+        resumed = delivery_journal.resume(CHANNEL_ID, "digest", publish_post)
+        if resumed is not None:
+            log("── Bugungi digest jurnali tiklandi yoki allaqachon yuborilgan.")
+            return resumed
     if not items:
         log("── Post qilinadigan yangi imkoniyat yo'q.")
         return 0
 
     if len(items) > MAX_POST_PER_RUN:
         # Bular yo'qolmaydi: bazaga yozilmagani uchun keyingi yurishda yana keladi.
-        log(f"── {len(items)} tadan {MAX_POST_PER_RUN} tasi post qilinadi, "
+        log(f"── {len(items)} tadan {MAX_POST_PER_RUN} tasi tekshiriladi, "
             f"qolgan {len(items) - MAX_POST_PER_RUN} tasi keyingi yurishga qoladi.")
         items = items[:MAX_POST_PER_RUN]
 
@@ -375,6 +409,8 @@ def publish(items):
 
         retry_later = set(content.get("unverified_urls") or ())
         if not content.get("cards"):
+            if retry_later:
+                failure = RuntimeError("AI dalillari tasdiqlanmadi — grantlar qayta tekshirishga qoldi")
             log("   AI bu to'plamdan tasdiqlangan mos imkoniyat topmadi"
                 + (f" ({len(retry_later)} tasi keyingi yurishda qayta ko'riladi)." if retry_later else "."))
             rejected += [{"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"}
@@ -405,17 +441,22 @@ def publish(items):
     if rejected:
         save_grants_batch(rejected)
 
-    # 2) Tanlanganlar bitta digestga yig'iladi (BATCH_SIZE tadan oshsa — bir nechta post).
+    # 2) Exactly ONE message. Overflow stays retryable, never `skipped`.
     posted = 0
-    for start in range(0, len(selected), BATCH_SIZE):
-        chunk = selected[start:start + BATCH_SIZE]
+    if selected:
+        chunk = selected[:MAX_DIGEST_CARDS]
+        while chunk:
+            cards = [card for card, _ in chunk]
+            blocks, html = build_post(f"{len(cards)} ta yangi xalqaro imkoniyat", cards)
+            if fits_single_message(blocks, html):
+                break
+            chunk = chunk[:-1]
+        if not chunk:
+            raise RuntimeError("Bitta kartochka ham xabar limitiga sig'madi; talablar kesilmadi")
         cards = [card for card, _ in chunk]
         # A mixed digest can contain partial awards. Do not let an AI headline
         # claim that every opportunity is fully funded or has one eligibility.
         blocks, html = build_post(f"{len(cards)} ta yangi xalqaro imkoniyat", cards)
-
-        if not publish_post(blocks, html):
-            raise RuntimeError("Telegram xabari to'liq yuborilmadi — Actions logini tekshiring")
 
         saves = []
         for card, g in chunk:
@@ -424,8 +465,16 @@ def publish(items):
             saves.append({"grant": g, "deadline_iso": deadline, "status": "posted"})
             for alias in g.get("_aliases", []):
                 saves.append({"grant": alias, "status": "duplicate", "key": alias.get("source_key")})
-        save_grants_batch(saves)
-        posted += len(chunk)
+        if DB_READY and not DRY_RUN:
+            posted = delivery_journal.deliver(
+                CHANNEL_ID, "digest", blocks, html, saves, publish_post, len(chunk))
+        else:
+            if not publish_post(blocks, html):
+                raise RuntimeError("Telegram xabari to'liq yuborilmadi — Actions logini tekshiring")
+            save_grants_batch(saves)
+            posted = len(chunk)
+        if len(selected) > len(chunk):
+            log(f"   {len(selected) - len(chunk)} ta tanlangan imkoniyat keyingi yurishga qoldi (bazaga rad etilmadi).")
         action = "tayyorlandi (yuborilmadi)" if DRY_RUN else "post qilindi"
         log(f"   ✅ {len(chunk)} ta imkoniyat bitta postda {action}.")
 
@@ -456,6 +505,12 @@ def run():
     if DB_READY:
         send_reminders()
     log()
+
+    if DB_READY and not DRY_RUN:
+        resumed = delivery_journal.resume(CHANNEL_ID, "digest", publish_post)
+        if resumed is not None:
+            log(f"Yakunlandi: {resumed} ta imkoniyat. Bugungi digest jurnali yopilgan.")
+            return
 
     candidates = collect_candidates()
     if not candidates:
