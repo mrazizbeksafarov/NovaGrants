@@ -285,7 +285,9 @@ def _build_prompt(grants: list) -> str:
         lines.append(f"Nomi: {g.get('title', '')}")
         if g.get("deadline_iso"):
             lines.append(f"Tizim aniqlagan muddat: {g['deadline_iso']}")
-        lines.append(f"Mazmuni va talablar: {(g.get('summary') or '')[:1800]}")
+        if g.get("official_evidence_url"):
+            lines.append("Dalil: dastur tashkilotchisining rasmiy sahifasi; aggregator tavsifidan ustun.")
+        lines.append(f"Mazmuni va talablar: {(g.get('summary') or '')[:6000]}")
         lines.append("")
     lines.append("Eslatma: javobda har bir imkoniyatga uning raqami (index) bilan murojaat qil.")
     return "\n".join(lines)

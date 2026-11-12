@@ -6,9 +6,11 @@ and never enter reminders or grant deduplication. See docs/delivery-journal.md.
 
 import hashlib
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import database
+from resilience import execute as execute_query
 
 PREFIX = "urn:novagrants:delivery:"
 TZ = timezone(timedelta(hours=5))
@@ -34,7 +36,7 @@ def _client():
 
 
 def _get(key):
-    result = _client().select("*").eq("url_key", key).limit(1).execute()
+    result = execute_query(_client().select("*").eq("url_key", key).limit(1))
     return result.data[0] if result.data else None
 
 
@@ -46,11 +48,29 @@ def _payload(row):
 
 
 def _transition(row, before, after):
-    result = (_client().update({"status": after}).eq("url_key", row["url_key"])
-              .eq("status", before).execute())
-    if len(result.data or []) != 1:
-        raise database.DatabaseWriteError("Jurnal holati tasdiqlanmadi; yuborish to'xtatildi")
-    row["status"] = after
+    token = uuid.uuid4().hex if before == "delivery_prepared" else row.get("fingerprint")
+    changes = {"status": after}
+    if token:
+        changes["fingerprint"] = token
+    query = _client().update(changes).eq("url_key", row["url_key"]).eq("status", before)
+    if before != "delivery_prepared" and token:
+        query = query.eq("fingerprint", token)
+    error = None
+    try:
+        result = execute_query(query)
+        if len(result.data or []) == 1:
+            row.update(changes)
+            return
+    except Exception as exc:
+        error = exc
+    # Confirm a lost acknowledgment using this process's claim token only.
+    current = _get(row["url_key"])
+    if current and current["status"] == after and current.get("fingerprint") == token:
+        row.update(changes)
+        return
+    if error:
+        raise error
+    raise database.DatabaseWriteError("Jurnal holati tasdiqlanmadi; yuborish to'xtatildi")
 
 
 def _finish(row):
@@ -64,8 +84,8 @@ def _finish(row):
 
 def recover(target):
     """Repair acknowledged sends, then stop on any unresolved send for this chat."""
-    rows = (_client().select("*")
-            .in_("status", ["delivery_sent", "delivery_sending"]).execute()).data or []
+    rows = (execute_query(_client().select("*")
+            .in_("status", ["delivery_sent", "delivery_sending"]))).data or []
     scoped = [r for r in rows if r.get("url_key", "").startswith(f"{PREFIX}{_scope(target)}:")]
     for row in scoped:
         if row["status"] == "delivery_sent":
@@ -118,7 +138,7 @@ def deliver(target, kind, blocks, html, saves, sender, count, reminder_urls=()):
                "title": f"Nova Grants {kind} delivery", "status": "delivery_prepared",
                "source_url": json.dumps(payload, ensure_ascii=False), "reminder_sent": True}
         try:
-            result = _client().insert(row).execute()
+            result = execute_query(_client().insert(row))
             if len(result.data or []) != 1:
                 raise database.DatabaseWriteError("Jurnal yozuvi tasdiqlanmadi")
         except Exception:

@@ -32,16 +32,21 @@ from database import (
     get_grants_nearing_deadline, mark_reminder_sent as _mark_reminder_sent, stats,
 )
 from ai_agent import generate_post_content, BATCH_SIZE
+from official_evidence import verify_all as verify_official_pages
+from scraper import SOURCE_ISSUES
+from resilience import transient_error
 from post_builder import build_post, usable_cards
 from telegram_bot import (
     send_telegram_message as _send_telegram_message,
     publish_single as _publish, fits_single_message, CHANNEL_ID,
     notify_admin,
+    DeliveryUncertain,
 )
 
 MAX_RESOLVE_PER_RUN = 80     # bir yurishda nechta maqolani ochamiz (tarmoq nazorati)
 MAX_POST_PER_RUN = 32        # AI tekshiradigan nomzodlar; nashr — kuniga bitta digest
 MAX_DIGEST_CARDS = 8
+RESOLVE_ISSUES = []
 RESOLVE_WORKERS = 14         # superkompyuter parallel oqimlari (har bir domen alohida throttle nazoratida)
 
 # Quruq sinov: hech narsa yuborilmaydi va bazaga yozilmaydi.
@@ -268,8 +273,19 @@ def resolve_links(items):
     log(f"── {len(batch)} ta yozuvda asl havola qidirilmoqda...")
     started = time.time()
 
+    RESOLVE_ISSUES.clear()
+    def resolve_safely(grant):
+        try:
+            result = resolve_grant(dict(grant))
+            if not isinstance(result, dict) or not isinstance(result.get("url", ""), str):
+                raise TypeError("Havola natijasi yaroqsiz")
+            return result
+        except Exception as exc:
+            RESOLVE_ISSUES.append(type(exc).__name__)
+            log(f"   Bitta havola qayta tekshirishga qoldi: {type(exc).__name__}")
+            return {**grant, "url": ""}
     with concurrent.futures.ThreadPoolExecutor(max_workers=RESOLVE_WORKERS) as ex:
-        resolved = list(ex.map(resolve_grant, batch))
+        resolved = list(ex.map(resolve_safely, batch))
 
     ok = [g for g in resolved if g.get("url")]
     failed = [g for g in resolved if not g.get("url")]
@@ -395,9 +411,8 @@ def publish(items):
 
     # 1) AI barcha to'plamlarni ko'rib chiqadi. Post hali yuborilmaydi: aks holda
     # har to'plam (8 ta) o'z muqovasi bilan alohida, ko'pincha 1 grantli post bo'lardi.
-    for start in range(0, len(items), BATCH_SIZE):
-        batch = items[start:start + BATCH_SIZE]
-        log(f"── {start // BATCH_SIZE + 1}-to'plam: {len(batch)} ta imkoniyat AI ga yuborilmoqda...")
+    for number, batch in enumerate(editorial_batches(items), 1):
+        log(f"── {number}-to'plam: {len(batch)} ta imkoniyat AI ga yuborilmoqda...")
 
         content = generate_post_content(batch)
 
@@ -486,6 +501,20 @@ def publish(items):
     return posted
 
 
+def editorial_batches(items):
+    """Keep larger official evidence inside a bounded per-request token budget."""
+    batch, size = [], 0
+    for grant in items:
+        cost = len(str(grant.get("summary") or "")) + len(str(grant.get("title") or ""))
+        if batch and (len(batch) >= BATCH_SIZE or size + cost > 12000):
+            yield batch
+            batch, size = [], 0
+        batch.append(grant)
+        size += cost
+    if batch:
+        yield batch
+
+
 def run():
     problems = []                # yurish oxirida adminga yuboriladi
     started = datetime.now(timezone.utc)
@@ -514,10 +543,14 @@ def run():
             return
 
     candidates = collect_candidates()
+    if SOURCE_ISSUES:
+        problems.append(f"{len(SOURCE_ISSUES)} ta manba vaqtincha o'qilmadi; qolganlari ishlatildi")
     if not candidates:
         log("\nYangi imkoniyat yo'q.")
 
     resolved = resolve_links(candidates)
+    if RESOLVE_ISSUES:
+        problems.append(f"{len(RESOLVE_ISSUES)} ta havola xatosi ajratildi va keyingi yurishga qoldi")
     if candidates and len(resolved) < len(candidates[:MAX_RESOLVE_PER_RUN]) * 0.35:
         problems.append(f"Asl havola topish darajasi past: "
                         f"{len(resolved)}/{len(candidates[:MAX_RESOLVE_PER_RUN])}")
@@ -530,10 +563,22 @@ def run():
         resolved = [g for g in resolved if not is_aggregator(g["url"])]
 
     unique = deduplicate(enrich_deadlines(resolved))
-
-    posted = publish(unique)
-    if unique and not posted:
-        problems.append(f"{len(unique)} ta nomzod bor edi, lekin hech biri post qilinmadi")
+    evidence = verify_official_pages(unique[:MAX_POST_PER_RUN])
+    ready = [item.grant for item in evidence if item.status == "ready"]
+    rejected = [item.grant for item in evidence if item.status == "ineligible"]
+    deferred = [item for item in evidence if item.status == "retry"]
+    if rejected:
+        save_grants_batch([{"grant": g, "status": "skipped"} for g in rejected])
+    if deferred:
+        problems.append(f"{len(deferred)} ta dastur uchun rasmiy dalil olinmadi; qayta tekshirishga qoldi")
+        for item in deferred:
+            log(f"   Rasmiy tekshiruv: {item.reason} — {item.grant.get('title', '')[:65]}")
+    log(f"── Rasmiy tekshiruv: {len(ready)} tayyor, {len(rejected)} mos emas, {len(deferred)} qayta uriniladi")
+    if deferred and not ready:
+        raise RuntimeError("Rasmiy sahifalardan yetarli dalil olinmadi; tasdiqlanmagan grant chiqarilmadi")
+    posted = publish(enrich_deadlines(ready))
+    if ready and not posted:
+        problems.append(f"{len(ready)} ta nomzod bor edi, lekin hech biri post qilinmadi")
 
     elapsed = int((datetime.now(timezone.utc) - started).total_seconds())
     log()
@@ -561,10 +606,25 @@ def run():
 
 
 
+def run_with_recovery():
+    """Restart only a known transient DB failure; Telegram uncertainty is final."""
+    for attempt in range(3):
+        try:
+            return run()
+        except (DeliveryUncertain, delivery_journal.UncertainDelivery):
+            raise
+        except Exception as exc:
+            if attempt == 2 or not transient_error(exc):
+                raise
+            delay = (5, 15)[attempt]
+            log(f"Baza vaqtincha uzildi; jurnal orqali {delay}s dan keyin xavfsiz tiklash.")
+            time.sleep(delay)
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     try:
-        run()
+        run_with_recovery()
     except Exception as exc:
         if not DRY_RUN:
             notify_admin(f"⚠️ <b>Nova Grants: yurish yakunlanmadi</b>\nXato turi: {type(exc).__name__}. "

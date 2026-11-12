@@ -253,7 +253,7 @@ def _post(payload: dict, method: str = "sendMessage") -> tuple:
                 resp = requests.post(url, data=data, files={"nova_cover": (cover.name, media, "image/png")}, timeout=45)
         else:
             resp = requests.post(url, json=payload, timeout=30)
-    except (requests.Timeout, requests.ConnectionError) as exc:
+    except requests.RequestException as exc:
         raise DeliveryUncertain("Telegram javobi noma'lum; avtomatik qayta yuborilmadi") from exc
     except Exception as e:
         return False, type(e).__name__
@@ -278,9 +278,14 @@ def _post(payload: dict, method: str = "sendMessage") -> tuple:
 
     if not isinstance(data, dict):
         raise DeliveryUncertain("Telegram javobining tuzilishi noma'lum")
-    if data.get("ok"):
+    if data.get("ok") is True:
         _last_result = data.get("result")
+        if method in {"sendMessage", "sendRichMessage"} and not (
+                isinstance(_last_result, dict) and type(_last_result.get("message_id")) is int):
+            raise DeliveryUncertain("Telegram yetkazilgan xabar identifikatorini qaytarmadi")
         return True, ""
+    if data.get("ok") is not False and resp.status_code < 400:
+        raise DeliveryUncertain("Telegram natijasi tasdiqlanmadi; qayta yuborilmadi")
     return False, data.get("description", f"HTTP {resp.status_code}")
 
 

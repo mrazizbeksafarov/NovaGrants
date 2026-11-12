@@ -34,6 +34,7 @@ from datetime import datetime, timezone, timedelta
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from resilience import execute as execute_query, transient_error
 
 load_dotenv()
 
@@ -69,7 +70,7 @@ def init_db(strict: bool = True) -> bool:
         return False
 
     try:
-        supabase.table(TABLE).select("id").limit(1).execute()
+        execute_query(supabase.table(TABLE).select("id").limit(1))
     except Exception as e:
         print(f"Bazaga ulanib bo'lmadi: {e}")
         if strict:
@@ -79,8 +80,10 @@ def init_db(strict: bool = True) -> bool:
     required = ("url", "source_url", "url_key", "source_key", "fingerprint", "status", "deadline", "reminder_sent")
     missing = False
     try:
-        supabase.table(TABLE).select(",".join(required)).limit(1).execute()
-    except Exception:
+        execute_query(supabase.table(TABLE).select(",".join(required)).limit(1))
+    except Exception as exc:
+        if transient_error(exc):
+            raise RuntimeError("Baza sxemasini vaqtincha tekshirib bo'lmadi") from exc
         missing = True
 
     if missing:
@@ -93,9 +96,11 @@ def init_db(strict: bool = True) -> bool:
         return False
 
     try:
-        supabase.table(TABLE).select("semantic_slug").limit(1).execute()
+        execute_query(supabase.table(TABLE).select("semantic_slug").limit(1))
         HAS_SEMANTIC_SLUG = True
-    except Exception:
+    except Exception as exc:
+        if transient_error(exc):
+            raise RuntimeError("Baza ustunini vaqtincha tekshirib bo'lmadi") from exc
         HAS_SEMANTIC_SLUG = False
         print("Eslatma: 'semantic_slug' ustuni bazada mavjud emas (migration.sql orqali qo'shish tavsiya etiladi).")
 
@@ -120,7 +125,7 @@ def _collect(column: str, values: list, posted_only: bool = False) -> set:
             query = supabase.table(TABLE).select(column).in_(column, batch)
             if posted_only:
                 query = query.eq("status", "posted")
-            resp = query.execute()
+            resp = execute_query(query)
             for row in resp.data or []:
                 if row.get(column):
                     found.add(row[column])
@@ -165,8 +170,8 @@ def get_seen_fingerprint_scopes(fingerprints: list) -> set:
     found = set()
     try:
         for start in range(0, len(values), CHUNK):
-            response = (supabase.table(TABLE).select("fingerprint,url")
-                        .in_("fingerprint", values[start:start + CHUNK]).eq("status", "posted").execute())
+            response = (execute_query(supabase.table(TABLE).select("fingerprint,url")
+                        .in_("fingerprint", values[start:start + CHUNK]).eq("status", "posted")))
             found.update((r["fingerprint"], root_domain(host_of(r.get("url", ""))))
                          for r in response.data or [] if r.get("fingerprint"))
     except Exception as exc:
@@ -250,13 +255,13 @@ def _grant_row(entry: dict) -> dict:
 def _save_row(row: dict, existing: dict = None, attempt: int = 0):
     """Persist one row, protecting posted records even after an insert race."""
     if existing is None:
-        response = (supabase.table(TABLE).select("url_key,status")
-                    .eq("url_key", row["url_key"]).limit(1).execute())
+        response = (execute_query(supabase.table(TABLE).select("url_key,status")
+                    .eq("url_key", row["url_key"]).limit(1)))
         existing = response.data[0] if response.data else {}
     # Older releases stored an official URL under an aggregator/source key.
     # UNIQUE(url) and UNIQUE(url_key) are independent identities; inspect both.
-    url_response = (supabase.table(TABLE).select("url_key,status")
-                    .eq("url", row["url"]).limit(1).execute())
+    url_response = (execute_query(supabase.table(TABLE).select("url_key,status")
+                    .eq("url", row["url"]).limit(1)))
     url_owner = url_response.data[0] if url_response.data else {}
     if existing.get("status") == "posted" or url_owner.get("status") == "posted":
         return
@@ -278,7 +283,7 @@ def _save_row(row: dict, existing: dict = None, attempt: int = 0):
         else:
             query = query.eq("status", existing["status"])
         try:
-            result = query.execute()
+            result = execute_query(query)
         except Exception as exc:
             if attempt < 2 and (str(getattr(exc, "code", "")) == "23505"
                                 or "23505" in str(exc) or "duplicate key" in str(exc).lower()):
@@ -286,7 +291,7 @@ def _save_row(row: dict, existing: dict = None, attempt: int = 0):
             raise
     else:
         try:
-            result = supabase.table(TABLE).insert({**row, "reminder_sent": False}).execute()
+            result = execute_query(supabase.table(TABLE).insert({**row, "reminder_sent": False}))
         except Exception as exc:
             code = str(getattr(exc, "code", ""))
             if code == "23505" or "23505" in str(exc) or "duplicate key" in str(exc).lower():
@@ -322,7 +327,7 @@ def save_grants_batch(items_with_meta: list):
         keys = list(rows)
         for start in range(0, len(keys), CHUNK):
             part = keys[start:start + CHUNK]
-            result = supabase.table(TABLE).select("url_key,status").in_("url_key", part).execute()
+            result = execute_query(supabase.table(TABLE).select("url_key,status").in_("url_key", part))
             existing = {r["url_key"]: r for r in result.data or []}
             inserts = []
             for key in part:
@@ -333,7 +338,7 @@ def save_grants_batch(items_with_meta: list):
             if not inserts:
                 continue
             try:
-                result = supabase.table(TABLE).insert(inserts).execute()
+                result = execute_query(supabase.table(TABLE).insert(inserts))
                 if len(result.data or []) != len(inserts):
                     raise DatabaseWriteError("Baza barcha yozuvlarni tasdiqlamadi")
             except Exception:
@@ -353,7 +358,7 @@ def get_grants_nearing_deadline(days: int = 5) -> list:
         return []
     try:
         now = datetime.now(timezone.utc)
-        resp = (supabase.table(TABLE)
+        resp = (execute_query(supabase.table(TABLE)
                 .select("*")
                 .eq("status", "posted")
                 .eq("reminder_sent", False)
@@ -361,8 +366,7 @@ def get_grants_nearing_deadline(days: int = 5) -> list:
                 .gt("deadline", now.isoformat())
                 .lte("deadline", (now + timedelta(days=days)).isoformat())
                 .order("deadline")
-                .limit(15)
-                .execute())
+                .limit(15)))
         return resp.data or []
     except Exception as e:
         raise RuntimeError("Muddati yaqin grantlar o'qilmadi") from e
@@ -372,7 +376,7 @@ def mark_reminder_sent(grant_url: str):
     if not supabase:
         raise DatabaseWriteError("Eslatma belgisi uchun baza sozlanmagan")
     try:
-        response = supabase.table(TABLE).update({"reminder_sent": True}).eq("url", grant_url).execute()
+        response = execute_query(supabase.table(TABLE).update({"reminder_sent": True}).eq("url", grant_url))
         if not response.data:
             raise DatabaseWriteError("Eslatma belgisi saqlangani tasdiqlanmadi")
     except Exception as e:
@@ -386,7 +390,7 @@ def stats() -> dict:
     out = {}
     try:
         for st in ("posted", "skipped", "duplicate"):
-            r = supabase.table(TABLE).select("id", count="exact").eq("status", st).limit(1).execute()
+            r = execute_query(supabase.table(TABLE).select("id", count="exact").eq("status", st).limit(1))
             out[st] = r.count
     except Exception:
         pass
