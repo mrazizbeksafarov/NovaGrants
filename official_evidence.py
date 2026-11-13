@@ -105,6 +105,37 @@ def _with_eligibility_pages(root, text, url):
     return "\n".join(html), "\n".join(texts), used
 
 
+LOCAL_LANGUAGE = re.compile(
+    r"\b(?:uchun|bo.yicha|ariza|tanlov|yoshlar|talabalar|o.zbekiston|respublika|qabul qilinadi"
+    r"|учун|бўйича|ўзбекистон|ёшлар|танлов|узбекистан|республик)\b", re.I)
+MIN_LISTING = 120
+
+
+def _local_call(url, text):
+    """An Uzbek-language call on an Uzbek site is, by itself, open to Uzbekistan."""
+    return host_of(url).endswith(".uz") or len(LOCAL_LANGUAGE.findall(text or "")) >= 3
+
+
+def _listing_evidence(grant, reason, official_text=""):
+    """The official link stays; the announcement text supplies who may apply.
+
+    Many official sites block bots or keep eligibility out of the call page.
+    The channel's two conditions are an official link and Uzbekistan
+    eligibility, so the announcement's own wording may prove eligibility;
+    assess() still requires an explicit Uzbekistan/worldwide scope in it.
+    """
+    listing = str(grant.get("summary") or "").strip()
+    if len(listing) < MIN_LISTING:
+        return Evidence(grant, "retry", reason)
+    if foreign_enrollment_required(listing):
+        return Evidence(grant, "ineligible", "xorijda avvaldan o'qish sharti bor")
+    verified = dict(grant)
+    parts = [official_text, "E'lon matni:\n" + listing[:2500]] if official_text else [listing[:4000]]
+    verified["summary"] = "\n\n".join(parts)
+    verified["evidence_from_listing"] = True
+    return Evidence(verified, "ready")
+
+
 def verify_one(grant):
     url = grant.get("url", "")
     try:
@@ -113,7 +144,7 @@ def verify_one(grant):
         response = _get(url)
         document = _document(response)
         if document is None:
-            return Evidence(grant, "retry", "rasmiy sahifa o'qilmadi")
+            return _listing_evidence(grant, "rasmiy sahifa o'qilmadi")
         final_url = getattr(response, "url", None) or url
         if is_aggregator(final_url) or is_blocked(final_url):
             return Evidence(grant, "retry", "rasmiy bo'lmagan sahifaga yo'naltirildi")
@@ -129,8 +160,9 @@ def verify_one(grant):
             root, text = next_document
             final_url = next_url
         html, text, extra_pages = _with_eligibility_pages(root, text, final_url)
-        if not ELIGIBILITY_CONTEXT.search(text):
-            return Evidence(grant, "retry", "rasmiy sahifada qatnashish dalili yetarli emas")
+        if not ELIGIBILITY_CONTEXT.search(text) and not _local_call(final_url, text):
+            return _listing_evidence(grant, "rasmiy sahifada qatnashish dalili yetarli emas",
+                                     opportunity_summary(html, limit=3500))
         if (EVENT.search(grant.get("title", ""))
                 and stated_application_fee(text) and not established_issuer(final_url)):
             return Evidence(grant, "review", "paid_private_forum")
