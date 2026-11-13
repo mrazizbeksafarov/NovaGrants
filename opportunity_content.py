@@ -24,13 +24,37 @@ ELIGIBILITY_HEADING = re.compile(
 )
 
 
+BLOCK_TAGS = ["address", "article", "aside", "blockquote", "dd", "details", "div", "dl", "dt",
+              "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5",
+              "h6", "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "summary",
+              "table", "tbody", "td", "th", "thead", "tr", "ul", "option"]
+
+
+def readable_text(node) -> str:
+    """Text as a browser shows it: line breaks only between blocks.
+
+    Office/SharePoint pages split single words across inline spans
+    ("repres<span>ent</span>ation"). Joining every text node with a newline
+    turned those words into "repres\\nent\\nation", so a correct verbatim
+    model quote could never match the evidence and good calls were retried
+    forever. Inline elements are now joined exactly as rendered.
+    """
+    for br in node.find_all("br"):
+        br.replace_with("\n")
+    for block in node.find_all(BLOCK_TAGS):
+        block.insert_before("\n")
+        block.insert_after("\n")
+    lines = (re.sub(r"[ \t\r\f\v   ]+", " ", line).strip()
+             for line in node.get_text("").splitlines())
+    return "\n".join(line for line in lines if line)
+
+
 def opportunity_summary(raw: str, limit: int = 1800) -> str:
     """Retain an introduction plus evidence; do not discard late eligibility lists."""
     soup = BeautifulSoup(raw or "", "html.parser")
     for node in soup.select("script, style, nav, footer, aside"):
         node.decompose()
-    text = re.sub(r"[ \t]+", " ", soup.get_text("\n", strip=True))
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = readable_text(soup)
     if len(text) <= limit:
         return text
 

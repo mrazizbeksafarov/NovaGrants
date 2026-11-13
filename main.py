@@ -453,7 +453,8 @@ def publish(items):
     selected = []   # (card, grant): AI tanlagan, hali post qilinmagan
     rejected = []   # AI rad etgan — "skipped", ertaga qayta ishlanmaydi
     review_records = []
-    failure = None
+    failure = None          # infrastructure problem: AI unavailable, broken cards
+    evidence_pending = 0    # editorial outcome: evidence not proven, retried later
 
     # 1) AI barcha to'plamlarni ko'rib chiqadi. Post hali yuborilmaydi: aks holda
     # har to'plam (8 ta) o'z muqovasi bilan alohida, ko'pincha 1 grantli post bo'lardi.
@@ -487,12 +488,24 @@ def publish(items):
         declared = {c.get("_source", {}).get("url") for c in content.get("cards", [])}
         retry_later.update(g["url"] for g in batch
                            if g["url"] not in declared | rejected_urls | set(reviews))
+        unanswered = set()
         for decision in content.get("decisions", []):
             source = next((g for g in batch if g["url"] == decision["url"]), {})
             selection_audit.record("editorial", source, decision["state"], decision["reason"])
+            if decision["reason"] == "provider_unavailable":
+                unanswered.add(decision["url"])
+            elif (decision["reason"] == "insufficient_evidence" and source.get("official_evidence_url")
+                    and decision["url"] in retry_later):
+                # The editor read the official page (and its eligibility
+                # subpages) and still found no proof that Uzbekistan-based
+                # applicants qualify. Re-asking tomorrow with the same page
+                # gives the same answer and starves new candidates of quota.
+                hold_for_review(source, "official_evidence_insufficient")
+                retry_later.discard(decision["url"])
+        if unanswered:
+            failure = failure or RuntimeError("AI javobi olinmadi — grantlar keyingi yurishga qoldirildi")
+        evidence_pending += len(retry_later - unanswered)
         if not content.get("cards"):
-            if retry_later:
-                failure = RuntimeError("AI dalillari tasdiqlanmadi — grantlar qayta tekshirishga qoldi")
             log("   AI bu to'plamdan tasdiqlangan mos imkoniyat topmadi"
                 + (f" ({len(retry_later)} tasi keyingi yurishda qayta ko'riladi)." if retry_later else "."))
             rejected += [{"grant": g, "deadline_iso": g.get("deadline_iso"), "status": "skipped"}
@@ -575,6 +588,13 @@ def publish(items):
             raise failure
         PUBLISH_ISSUES.append(str(failure))
         log(f"── Qisman yakunlandi: {failure}. Tasdiqlangan digest tayyor, qolganlari qayta tekshiriladi.")
+    if evidence_pending:
+        # Not a failed run: every candidate was screened and none was proven
+        # eligible yet. Publishing nothing is the correct outcome; the admin
+        # report lists it, and the candidates come back next run.
+        PUBLISH_ISSUES.append(f"{evidence_pending} ta nomzod uchun moslik dalili hali tasdiqlanmadi; keyingi yurishda qayta tekshiriladi")
+        if not posted:
+            log("── Bugun tasdiqlangan mos imkoniyat topilmadi — kanalga tasdiqlanmagan post chiqarilmadi.")
     return posted
 
 

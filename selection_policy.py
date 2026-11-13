@@ -72,22 +72,41 @@ def normalized(text):
     return re.sub(r"\s+", " ", value).strip().casefold()
 
 
+ELLIPSIS = re.compile(r"\s*\[?\.{3}\]?\s*")  # "…" is NFKC-normalized to "..."
+ELLIPSIS_GAP_LIMIT = 600
+# An elided span must not be able to hide a restriction ("all countries ...
+# Uzbekistan" cut out of "all countries except Uzbekistan").
+RESTRICTIVE_GAP = re.compile(r"\b(?:not|no|except|excluding|exclude[ds]?|ineligible|cannot|can't|only|unless|other than|but)\b")
+
+
 def supported_quote(quote, text):
     quote, text = normalized(quote), normalized(text)
     if len(quote) < 8:
         return False
     if quote in text:
         return True
-    # Models often separate genuine list-item excerpts with semicolons. Accept
-    # only ordered, verbatim fragments, never invented wording or ellipses.
-    parts = [part.strip().rstrip(".") for part in quote.split(";") if part.strip()]
-    if len(parts) < 2 or any(len(part) < 8 for part in parts):
+    # Models separate genuine list-item excerpts with semicolons, and shorten
+    # long country lists with an ellipsis ("Citizens of ... : Armenia, ...,
+    # Uzbekistan"). Accept only ordered verbatim fragments; an elided gap must
+    # be short and free of negation, so a removed "except"/"not" never passes.
+    pieces = []
+    for elided_before, chunk in enumerate(ELLIPSIS.split(quote)):
+        for position, part in enumerate(chunk.split(";")):
+            part = part.strip().strip(",:").rstrip(".").strip()
+            if part:
+                pieces.append((part, bool(elided_before) and position == 0))
+    shortest = 5 if any(elided for _, elided in pieces) else 8
+    if len(pieces) < 2 or any(len(part) < shortest for part, _ in pieces):
         return False
-    cursor = 0
-    for part in parts:
-        index = text.find(part, cursor)
+    cursor = None
+    for part, elided in pieces:
+        index = text.find(part, cursor or 0)
         if index < 0:
             return False
+        if elided and cursor is not None:
+            gap = text[cursor:index]
+            if len(gap) > ELLIPSIS_GAP_LIMIT or RESTRICTIVE_GAP.search(gap):
+                return False
         cursor = index + len(part)
     return True
 

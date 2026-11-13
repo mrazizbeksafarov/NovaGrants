@@ -9,11 +9,16 @@ from bs4 import BeautifulSoup
 
 from editorial_checks import foreign_enrollment_required
 from link_resolver import _get, host_of, root_domain, is_aggregator, is_blocked
-from opportunity_content import opportunity_summary, ELIGIBILITY_CONTEXT
+from opportunity_content import opportunity_summary, readable_text, ELIGIBILITY_CONTEXT, GEOGRAPHIC_CONTEXT
 from selection_policy import established_issuer, stated_application_fee, EVENT
 
 MAX_PAGES = 32
 WORKERS = 6
+MAX_ELIGIBILITY_PAGES = 2
+ELIGIBILITY_LINK = re.compile(
+    r"eligib|who can apply|who may apply|country list|list of countries|participating countries"
+    r"|nationalit|citizenship|criteria|requirements|qualifications", re.I)
+DOCUMENT_FILE = re.compile(r"\.(?:pdf|docx?|xlsx?|pptx?|zip)(?:$|[?#])", re.I)
 CHALLENGE = re.compile(r"verify (?:that )?you are human|just a moment|enable javascript and cookies|access denied", re.I)
 
 
@@ -58,6 +63,48 @@ def _programme_link(root, url, title):
     return max(choices)[1] if choices else None
 
 
+def _eligibility_links(root, url):
+    """Same-site pages that state who may apply (country lists, criteria).
+
+    Many official calls keep nationality rules on a separate "Eligibility" or
+    "Country list" page. Without it the editor can only answer
+    insufficient_evidence and a genuinely open call is retried every day.
+    """
+    here = url.split("#")[0].rstrip("/")
+    seen, links = set(), []
+    for a in root.select("a[href]"):
+        label = a.get_text(" ", strip=True)
+        target = urljoin(url, a["href"]).split("#")[0]
+        if (not target.startswith("http") or target.rstrip("/") == here or target in seen
+                or DOCUMENT_FILE.search(target) or is_aggregator(target) or is_blocked(target)
+                or root_domain(host_of(target)) != root_domain(host_of(url))):
+            continue
+        by_label = bool(ELIGIBILITY_LINK.search(label))
+        if by_label or ELIGIBILITY_LINK.search(target.rsplit("/", 1)[-1] or target):
+            seen.add(target)
+            links.append((not by_label, len(links), target))
+    return [target for *_, target in sorted(links)[:MAX_ELIGIBILITY_PAGES]]
+
+
+def _with_eligibility_pages(root, text, url):
+    """Append official eligibility subpages when the call page lacks a country scope."""
+    if GEOGRAPHIC_CONTEXT.search(text):
+        return str(root), text, []
+    html, texts, used = [str(root)], [text], []
+    for link in _eligibility_links(root, url):
+        response = _get(link)
+        document = _document(response)
+        final = getattr(response, "url", None) or link
+        if (document is None or is_aggregator(final) or is_blocked(final)
+                or root_domain(host_of(final)) != root_domain(host_of(url))):
+            continue
+        sub_root, sub_text = document
+        html.append(str(sub_root))
+        texts.append(sub_text)
+        used.append(final)
+    return "\n".join(html), "\n".join(texts), used
+
+
 def verify_one(grant):
     url = grant.get("url", "")
     try:
@@ -81,6 +128,7 @@ def verify_one(grant):
                 return Evidence(grant, "retry", "dastur e'loni o'qilmadi")
             root, text = next_document
             final_url = next_url
+        html, text, extra_pages = _with_eligibility_pages(root, text, final_url)
         if not ELIGIBILITY_CONTEXT.search(text):
             return Evidence(grant, "retry", "rasmiy sahifada qatnashish dalili yetarli emas")
         if (EVENT.search(grant.get("title", ""))
@@ -89,8 +137,10 @@ def verify_one(grant):
         if foreign_enrollment_required(text):
             return Evidence(grant, "ineligible", "xorijda avvaldan o'qish sharti bor")
         verified = dict(grant)
-        verified["summary"] = opportunity_summary(str(root), limit=6000)
+        verified["summary"] = opportunity_summary(html, limit=6000)
         verified["official_evidence_url"] = final_url
+        if extra_pages:
+            verified["official_evidence_pages"] = extra_pages
         return Evidence(verified, "ready")
     except Exception as exc:
         # One broken page must not abort the other programmes. Never mark it

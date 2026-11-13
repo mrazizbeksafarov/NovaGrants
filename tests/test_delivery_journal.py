@@ -226,15 +226,29 @@ def test_oversized_fallback_is_rejected_before_network(monkeypatch):
     assert calls == []
 
 
-def test_all_unverified_cards_fail_without_recording_rejection(monkeypatch):
+def test_all_unverified_cards_end_quietly_without_recording_rejection(monkeypatch):
+    # Unproven eligibility is an editorial outcome, not a crashed run: nothing
+    # is posted or saved, the admin report says why, and the workflow is green.
     g = grant()
     monkeypatch.setattr(main, "DB_READY", False)
     monkeypatch.setattr(main, "generate_post_content", lambda batch: {"cards": [], "unverified_urls": [g["url"]]})
-    saves = []
+    saves, posts = [], []
     monkeypatch.setattr(main, "save_grants_batch", saves.extend)
-    with pytest.raises(RuntimeError, match="dalillari"):
+    monkeypatch.setattr(main, "publish_post", lambda *args: posts.append(args) or True)
+    assert main.publish([g]) == 0
+    assert saves == [] and posts == []
+    assert any("dalili" in issue for issue in main.PUBLISH_ISSUES)
+
+
+def test_unanswered_ai_still_fails_the_run(monkeypatch):
+    g = grant()
+    monkeypatch.setattr(main, "DB_READY", False)
+    monkeypatch.setattr(main, "generate_post_content", lambda batch: {
+        "cards": [], "unverified_urls": [g["url"]],
+        "decisions": [{"url": g["url"], "state": "retry", "reason": "provider_unavailable"}]})
+    monkeypatch.setattr(main, "save_grants_batch", lambda rows: None)
+    with pytest.raises(RuntimeError, match="AI javobi"):
         main.publish([g])
-    assert saves == []
 
 
 def test_partial_rich_delivery_is_uncertain_without_html_fallback(monkeypatch):
