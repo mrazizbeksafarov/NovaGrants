@@ -494,14 +494,6 @@ def publish(items):
             selection_audit.record("editorial", source, decision["state"], decision["reason"])
             if decision["reason"] == "provider_unavailable":
                 unanswered.add(decision["url"])
-            elif (decision["reason"] == "insufficient_evidence" and source.get("official_evidence_url")
-                    and decision["url"] in retry_later):
-                # The editor read the official page (and its eligibility
-                # subpages) and still found no proof that Uzbekistan-based
-                # applicants qualify. Re-asking tomorrow with the same page
-                # gives the same answer and starves new candidates of quota.
-                hold_for_review(source, "official_evidence_insufficient")
-                retry_later.discard(decision["url"])
         if unanswered:
             failure = failure or RuntimeError("AI javobi olinmadi — grantlar keyingi yurishga qoldirildi")
         evidence_pending += len(retry_later - unanswered)

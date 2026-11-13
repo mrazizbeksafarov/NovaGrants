@@ -44,7 +44,7 @@ class Decision:
 
 
 ACADEMIC = {"ethz.ch", "epfl.ch", "unilu.ch", "lu.se", "su.se", "kth.se", "helsinki.fi", "aalto.fi", "uni-bonn.de", "hu-berlin.de", "mpg.de", "embl.org", "cern.ch", "oist.jp"}
-PUBLIC = {"daad.de", "chevening.org", "stipendiumhungaricum.hu", "turkiyeburslari.gov.tr", "studyinnl.org", "eyuf.uz", "un.org", "undp.org", "unicef.org", "unesco.org", "unhcr.org", "worldbank.org", "europa.eu"}
+PUBLIC = {"daad.de", "chevening.org", "stipendiumhungaricum.hu", "turkiyeburslari.gov.tr", "studyinnl.org", "eyuf.uz", "un.org", "undp.org", "unicef.org", "unesco.org", "unhcr.org", "worldbank.org", "europa.eu", "si.se", "studyinsweden.se", "admin.ch", "fcdo.gov.uk", "ned.org"}
 PAID_ACADEMIC = ACADEMIC | {"ox.ac.uk", "cam.ac.uk", "harvard.edu", "mit.edu", "stanford.edu", "yale.edu", "princeton.edu", "imperial.ac.uk", "ucl.ac.uk", "sussex.ac.uk", "kaust.edu.sa", "kaist.ac.kr", "u-tokyo.ac.jp", "nus.edu.sg", "ntu.edu.sg"}
 EVENT = re.compile(r"forum|summit|sammit|assembly|conference|konferensiya|symposium|форум|саммит|конференц|симпозиум", re.I)
 
