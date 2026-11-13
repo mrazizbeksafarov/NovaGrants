@@ -39,6 +39,7 @@ from official_evidence import verify_all as verify_official_pages
 from scraper import SOURCE_ISSUES
 from resilience import transient_error
 import selection_audit
+import gemini_inbox
 from selection_policy import priority as selection_priority, discovery_priority, cycle_hint
 from post_builder import build_post, usable_cards
 from telegram_bot import (
@@ -701,7 +702,14 @@ def run():
         problems.append(f"{len(leaked)} ta aggregator havolasi filtrdan o'tib ketdi")
         resolved = [g for g in resolved if not is_aggregator(g["url"])]
 
-    unique = deduplicate(enrich_deadlines(resolved))
+    # The owner's Gemini task files official links as GitHub issues. They are
+    # already resolved and go through the same checks as every other source.
+    inbox, inbox_issues, inbox_problems = gemini_inbox.fetch()
+    problems.extend(inbox_problems)
+    if inbox_issues:
+        log(f"── Gemini inbox: {len(inbox_issues)} ta issue, {len(inbox)} ta imkoniyat")
+    unique = deduplicate(enrich_deadlines(inbox + resolved))
+    unique.sort(key=lambda g: g.get("source_id") != gemini_inbox.SOURCE_ID)
     evidence = verify_official_pages(unique[:MAX_POST_PER_RUN])
     for item in evidence:
         selection_audit.record("official", item.grant, item.status, item.reason or "official_evidence_read")
@@ -728,6 +736,8 @@ def run():
         problems.append(f"{len(set(REVIEW_ISSUES))} ta saralash qarori tekshiruv navbatida; sabablar saralash hisobotida saqlandi")
     if ready and not posted:
         problems.append(f"{len(ready)} ta nomzod bor edi, lekin hech biri post qilinmadi")
+    if inbox_issues and not DRY_RUN:
+        gemini_inbox.finish(inbox_issues, inbox, selection_audit.snapshot()["decisions"])
 
     elapsed = int((datetime.now(timezone.utc) - started).total_seconds())
     log()
