@@ -30,19 +30,23 @@ def test_groq_request_uses_fixed_endpoint_and_structured_output(monkeypatch):
     assert calls[0][1]["json"]["response_format"]["json_schema"]["strict"] is True
 
 
-def test_groq_never_publishes_unsupported_eligibility_quote(monkeypatch):
-    result = {"data": {"headline": "New", "cards": [card(eligibility_evidence="Invented Uzbekistan guarantee")]},
-              "usage": {"total": 100}}
+def test_groq_invented_quote_cannot_publish_a_call_without_applicant_scope(monkeypatch):
+    source = item(summary="Applications are open. All research costs are covered.")
+    result = {"data": {"headline": "New", "cards": [card(eligibility_evidence="Invented Uzbekistan guarantee",
+              screening={**card()["screening"], "scope_quote": "Invented Uzbekistan guarantee"})]}, "usage": {"total": 100}}
     monkeypatch.setattr(groq_fallback, "request_content", lambda *args: result)
-    content = ai_agent._groq_content([item()])
+    content = ai_agent._groq_content([source])
     assert content["cards"] == []
-    assert content["unverified_urls"] == [item()["url"]]
+    assert content["review"][0]["reason"] == "uzbekistan_scope_not_explicit"
 
 
-def test_groq_keeps_verified_cards_when_another_quote_is_invented(monkeypatch):
-    first, second = item(1), item(2, url="https://other.example/award", url_key="other.example/award")
+def test_groq_keeps_verified_cards_when_another_call_lacks_scope(monkeypatch):
+    first = item(1)
+    second = item(2, url="https://other.example/award", url_key="other.example/award",
+                  summary="Applications are open. All research costs are covered.")
     good = card(index=1, eligibility_evidence=first["summary"])
-    bad = card(index=1, eligibility_evidence="Invented Uzbekistan guarantee")
+    bad = card(index=1, eligibility_evidence="Invented Uzbekistan guarantee",
+               screening={**card()["screening"], "scope_quote": "Invented Uzbekistan guarantee"})
     replies = [{"data": {"headline": "New", "cards": [good]}, "usage": {}},
                {"data": {"headline": "New", "cards": [bad]}, "usage": {}}]
     prompts = []
@@ -53,7 +57,7 @@ def test_groq_keeps_verified_cards_when_another_quote_is_invented(monkeypatch):
     content = ai_agent._groq_content([first, second])
     assert len(prompts) == 2 and all("Imkoniyat 2" not in p for p in prompts)
     assert [c["url"] for c in content["cards"]] == [first["url"]]
-    assert content["unverified_urls"] == [second["url"]]
+    assert [r["grant"]["url"] for r in content["review"]] == [second["url"]]
 
 
 def test_groq_uses_original_url_not_model_supplied_link(monkeypatch):

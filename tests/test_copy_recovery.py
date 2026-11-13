@@ -67,14 +67,15 @@ def test_copy_repair_has_a_run_wide_limit(monkeypatch):
     assert calls == []
 
 
-def test_failed_copy_repair_leaves_the_card_unverified(monkeypatch):
+def test_failed_copy_repair_does_not_block_a_verified_opportunity(monkeypatch):
+    # Wording is cosmetic; only the two editorial conditions block a post.
     monkeypatch.setattr(ai_agent, "_copy_repairs", 0)
     monkeypatch.setattr(ai_agent.groq_fallback, "configured", lambda: True)
     monkeypatch.setattr(ai_agent.groq_fallback, "request_content", lambda *args: None)
     data = {"cards": [card(eligibility="O'zbekiston fuqarolari, bakalavr talabalari")]}
     result, _ = ai_agent._repair_public_copy(data, [item()])
     reviewed = ai_agent._review_content({"headline": "Test", **result}, [item()], {})
-    assert reviewed["cards"] == [] and reviewed["unverified_urls"] == [item()["url"]]
+    assert [c["url"] for c in reviewed["cards"]] == [item()["url"]]
 
 
 def test_official_batches_follow_provider_availability(monkeypatch):

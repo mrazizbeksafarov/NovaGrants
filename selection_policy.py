@@ -165,79 +165,91 @@ def monetary_claims(text):
     return found
 
 
+# Applicants anywhere, or Uzbekistan by name. A destination such as "outside
+# of Japan" means any university/country except the host, so it counts too.
+OPEN_SCOPE = re.compile(
+    r"uzbek|o.zbek|узбек|ўзбек|all (?:nationalities|countries)|any (?:nationality|country)"
+    r"|(?:from|in) any country|world.?wide|around the world|all over the world|across the (?:world|globe)"
+    r"|regardless of (?:their )?(?:nationality|citizenship|country)|open to (?:all|everyone|anyone|applicants from all)"
+    r"|international (?:students|applicants|candidates|participants|youth|scholars|researchers)"
+    r"|non[-\s](?:EU|EEA)|outside (?:of )?(?:the )?(?:EU|EEA|European Union|US|USA|United States|UK|United Kingdom"
+    r"|Japan|Korea|China|Canada|Australia|Germany|France|Europe|host country)"
+    r"|central asia|markaziy osiyo|cis countries|barcha davlat|всех стран|любой страны|центральн\w*\s+ази",
+    re.I)
+
+
+def _strip_unsupported_claims(card, screening, text):
+    """Funding does not decide publication; unverified money/fee claims are
+    removed from the public copy instead of blocking the opportunity."""
+    page_money = monetary_claims(text)
+    free = re.compile(r"ariza\w*\s+(?:topshirish\s+)?bepul", re.I)
+    full = re.compile(r"to[‘’ʻ'`]?liq\s+grant|barcha\s+xarajatlar\s+qoplanadi", re.I)
+    overclaim = screening.get("funding") in {"discount", "partial", "tuition_only"}
+    free_ok = re.search(r"(?:no|without|zero)\s+(?:application\s+|processing\s+)?fee|application\s+(?:is\s+)?free"
+                        r"|waived for all|free of charge", text, re.I)
+
+    def keep(item):
+        item = str(item)
+        if not monetary_claims(item).issubset(page_money):
+            return False
+        if free.search(item) and not free_ok:
+            return False
+        return not (overclaim and full.search(item))
+
+    card["benefits"] = [b for b in card.get("benefits") or [] if keep(b)]
+    sentences = re.split(r"(?<=[.!?])\s+", str(card.get("summary") or ""))
+    summary = " ".join(s for s in sentences if keep(s)).strip()
+    if summary:
+        card["summary"] = summary
+
+
 def assess(card, source):
+    """Publish when the two editorial conditions hold.
+
+    1. The link is the programme's own page (enforced upstream: aggregator
+       links never reach this point; source["url"] is the official page).
+    2. A person in Uzbekistan can apply: Uzbekistan or an open/worldwide
+       scope is stated, nothing excludes Uzbekistan, no prior foreign
+       residence/enrolment is required, and the call is not closed.
+
+    Funding type, issuer reputation and quote wording no longer veto a post.
+    """
     from filters import ORG_APPLICATION_ONLY, PERSON_APPLICATION, RESULT_TITLE, NOT_AN_OPPORTUNITY
     raw = card.get("screening")
     if not raw:
         return Decision("retry", "screening_missing")
     screening = Screening.model_validate(raw).model_dump()
     text = normalized(source.get("summary"))
-    if ORG_APPLICATION_ONLY.search(text) and not PERSON_APPLICATION.search(text):
-        return Decision("reject", "institution_only")
-    if ORG_APPLICATION_ONLY.search(text) and PERSON_APPLICATION.search(text):
-        return Decision("review", "mixed_applicant_routes")
-    if RESULT_TITLE.search(source.get("title", "")) or NOT_AN_OPPORTUNITY.search(source.get("title", "")):
+    title = source.get("title", "")
+    if RESULT_TITLE.search(title) or NOT_AN_OPPORTUNITY.search(title):
         return Decision("reject", "not_opportunity")
+    if screening["applicant"] == "institution" or (
+            ORG_APPLICATION_ONLY.search(text) and not PERSON_APPLICATION.search(text)):
+        return Decision("reject", "institution_only")
     if re.search(r"(?:only|exclusively)\s+(?:US citizens|African (?:citizens|nationals)|Nigerian (?:citizens|students)|ASEAN nationals|EU citizens|US permanent residents)", text, re.I):
         return Decision("reject", "foreign_citizenship_only")
     if re.search(r"(?:except|excluding|not open to)[^.!?]{0,160}uzbekistan|uzbekistan[^.!?]{0,80}(?:not eligible|ineligible|excluded)", text, re.I):
         return Decision("reject", "uzbekistan_explicitly_excluded")
-    if any(screening[key] == "unclear" for key in ("uzbekistan", "applicant", "location", "call_state", "funding")):
-        return Decision("review", "eligibility_or_funding_unclear")
-    for key in ("scope_quote", "funding_quote", "call_quote"):
-        if not supported_quote(screening[key], text):
-            return Decision("retry", f"{key}_unsupported")
-    explicit_scope = re.search(r"uzbek|o.zbek|all (?:nationalities|countries)|any (?:nationality|country)|worldwide|around the world|central asia|markaziy osiyo|non[-\s](?:EU|EEA)|outside (?:the )?(?:EU|EEA)|узбек|ўзбек|всех стран|любой страны|центральн\w*\s+ази", screening["scope_quote"], re.I)
-    evidence_host = host_of(source.get("official_evidence_url") or source.get("url", ""))
-    local_scope = evidence_host.endswith((".gov.uz",)) or evidence_host in {"gov.uz", "eyuf.uz", "it-park.uz"}
-    if not explicit_scope and not local_scope:
-        return Decision("review", "uzbekistan_scope_not_explicit")
-    if screening["fee_quote"] and not supported_quote(screening["fee_quote"], text):
-        return Decision("retry", "fee_quote_unsupported")
-    if screening["applicant"] == "institution":
-        return Decision("reject", "institution_only")
     if screening["uzbekistan"] == "excluded" or screening["location"] == "foreign_required":
         return Decision("reject", "cannot_apply_from_uzbekistan")
     if foreign_enrollment_required(str(source.get("summary") or "") + " " + str(card.get("eligibility") or "")):
         return Decision("reject", "foreign_enrolment_required")
     if screening["call_state"] == "closed" or deadline_passed(source.get("summary", "")):
         return Decision("reject", "closed")
-    if screening["funding"] == "none":
-        return Decision("reject", "self_funded")
-    fee_signal = stated_application_fee(source.get("summary", ""))
-    # A model's "none" must not erase a stated fee on the official page.
-    if fee_signal and screening["fee"] not in {"admission_fee", "application_fee", "participation_fee"}:
-        return Decision("review", "fee_contradiction")
-    paid = fee_signal or screening["fee"] in {"admission_fee", "application_fee", "participation_fee"}
-    trusted = established_issuer(source.get("official_evidence_url") or source.get("url", ""))
-    event = screening["program"] == "conference" or EVENT.search(source.get("title", ""))
-    if event and (paid or screening["fee"] == "unclear"):
-        if not trusted or screening["organizer"] in {"private", "nonprofit", "unclear"}:
-            return Decision("review", "paid_private_forum")
-    if event and not trusted:
-        return Decision("review", "event_issuer_needs_review")
-    if screening["program"] == "other":
-        return Decision("review", "programme_type_unclear")
-    if paid and not paid_issuer_exception(source.get("official_evidence_url") or source.get("url", "")):
-        return Decision("review", "unestablished_paid_programme")
-    if screening["fee"] in {"admission_fee", "application_fee", "participation_fee", "refundable_deposit"}:
-        if not screening["mandatory_costs"] or not screening["fee_quote"]:
-            return Decision("review", "mandatory_cost_not_disclosed")
-    public = " ".join([card.get("summary", ""), *card.get("benefits", []), *screening["mandatory_costs"]])
-    evidence = screening["funding_quote"] + " " + screening["fee_quote"]
-    if not monetary_claims(public).issubset(monetary_claims(evidence)):
-        return Decision("review", "financial_amount_unsupported")
-    if screening["fee_amount"] and not monetary_claims(screening["fee_amount"]).issubset(monetary_claims(screening["fee_quote"])):
-        return Decision("review", "fee_amount_unsupported")
-    if (monetary_claims(public) and re.search(r"up to|at most|maximum", screening["funding_quote"], re.I)
-            and not re.search(r"gacha|eng ko.pi|maksimal|ko.pi bilan", public, re.I)):
-        return Decision("review", "conditional_amount_omitted")
-    if re.search(r"ariza\w*\s+(?:topshirish\s+)?bepul", public, re.I):
-        free_quote = re.search(r"(?:no|without|zero)\s+(?:application\s+|processing\s+)?fee|application\s+(?:is\s+)?free|waived for all|ariza\w*\s+(?:topshirish\s+)?bepul|to.lov\s+(?:olinmaydi|yo.q|undirilmaydi)|(?:сбор|плата|взнос)[^.\n]{0,40}не взимается|бесплатная подача", screening["fee_quote"], re.I)
-        if screening["fee"] != "none" or not free_quote:
-            return Decision("review", "free_application_unsupported")
-    if screening["funding"] in {"discount", "partial", "tuition_only"} and re.search(r"to[‘’ʻ'`]?liq\s+grant|barcha\s+xarajatlar\s+qoplanadi", public, re.I):
-        return Decision("review", "full_funding_overclaimed")
+    quote = screening["scope_quote"] if supported_quote(screening["scope_quote"], text) else ""
+    evidence_host = host_of(source.get("official_evidence_url") or source.get("url", ""))
+    local = evidence_host.endswith(".uz") or evidence_host == "uz"
+    if not (OPEN_SCOPE.search(quote) or OPEN_SCOPE.search(text) or local):
+        return Decision("review", "uzbekistan_scope_not_explicit")
+    # The channel's standing rule: paid private forums are never auto-posted.
+    event = screening["program"] == "conference" or EVENT.search(title)
+    paid = stated_application_fee(source.get("summary", "")) or screening["fee"] in {"admission_fee", "application_fee", "participation_fee"}
+    if event and paid and screening["organizer"] in {"private", "unclear"} and not established_issuer(source.get("official_evidence_url") or source.get("url", "")):
+        return Decision("review", "paid_private_forum")
+    if paid and not screening["mandatory_costs"]:
+        # A stated fee is never hidden: disclose it even if the model omitted it.
+        raw["mandatory_costs"] = ["Ariza to'lovi talab qilinadi; miqdorini rasmiy sahifadan tekshiring."]
+    _strip_unsupported_claims(card, screening, str(source.get("summary") or ""))
     return Decision("publish", "verified_individual_opportunity")
 
 
