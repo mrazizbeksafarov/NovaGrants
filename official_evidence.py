@@ -38,7 +38,7 @@ def _document(response):
     for node in soup.select("script, style, nav, footer, aside"):
         node.decompose()
     root = soup.select_one("main, article, [role=main]") or soup.body or soup
-    text = root.get_text("\n", strip=True)
+    text = readable_text(root)
     if len(text) < 160 or CHALLENGE.search(text[:1500]):
         return None
     return root, text

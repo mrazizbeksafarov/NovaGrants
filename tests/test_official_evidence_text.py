@@ -106,18 +106,30 @@ def test_unreadable_eligibility_subpage_keeps_main_evidence(monkeypatch):
     assert result.status == "ready" and "official_evidence_pages" not in result.grant
 
 
-def test_insufficient_official_evidence_is_parked_not_retried_daily(monkeypatch):
+def test_insufficient_evidence_stays_retryable_not_parked(monkeypatch):
+    # 2026-11-13: the editor called NED Hurford ("from around the world")
+    # insufficient. Parking such answers hid good calls; they stay retryable.
     g = {**grant(), "official_evidence_url": grant()["url"]}
     monkeypatch.setattr(main, "DB_READY", False)
     monkeypatch.setattr(main, "generate_post_content", lambda batch: {
         "cards": [], "unverified_urls": [g["url"]],
         "decisions": [{"url": g["url"], "state": "retry", "reason": "insufficient_evidence"}]})
     held = []
-    monkeypatch.setattr(main, "hold_for_review", lambda grant, reason: held.append((grant["url"], reason)))
+    monkeypatch.setattr(main, "hold_for_review", lambda grant, reason: held.append(reason))
     monkeypatch.setattr(main, "save_grants_batch", lambda rows: None)
     assert main.publish([g]) == 0
-    assert held == [(g["url"], "official_evidence_insufficient")]
-    assert not any("dalili" in issue for issue in main.PUBLISH_ISSUES)
+    assert held == []
+
+
+def test_government_agencies_are_established_issuers():
+    from selection_policy import established_issuer, paid_issuer_exception
+    for url in ["https://si.se/en/apply/scholarships/x/", "https://www.sbfi.admin.ch/en/x"]:
+        assert established_issuer(url) and paid_issuer_exception(url)
+
+
+def test_document_text_keeps_span_split_words(monkeypatch):
+    monkeypatch.setattr(official_evidence, "_get", lambda url: page(SPAN_SPLIT + "<p>Details.</p>" * 20, url))
+    assert "representation" in official_evidence._document(official_evidence._get("https://x.example/"))[1]
 
 
 def test_misquoted_evidence_stays_retryable(monkeypatch):
