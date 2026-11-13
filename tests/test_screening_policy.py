@@ -16,19 +16,21 @@ def fixture(**facts):
     return candidate, source
 
 
+# Two editorial conditions only (2026-11-13): someone in Uzbekistan can apply,
+# and the link is the official page. Funding, issuer and quote wording do not veto.
 @pytest.mark.parametrize("changes,state,reason", [
     ({}, "publish", "verified_individual_opportunity"),
     ({"uzbekistan": "excluded"}, "reject", "cannot_apply_from_uzbekistan"),
     ({"location": "foreign_required"}, "reject", "cannot_apply_from_uzbekistan"),
     ({"applicant": "institution"}, "reject", "institution_only"),
     ({"call_state": "closed"}, "reject", "closed"),
-    ({"funding": "none"}, "reject", "self_funded"),
-    ({"uzbekistan": "unclear"}, "review", "eligibility_or_funding_unclear"),
-    ({"location": "unclear"}, "review", "eligibility_or_funding_unclear"),
-    ({"funding": "unclear"}, "review", "eligibility_or_funding_unclear"),
-    ({"scope_quote": "Invented eligibility approval."}, "retry", "scope_quote_unsupported"),
-    ({"funding_quote": "Invented full financial coverage."}, "retry", "funding_quote_unsupported"),
-    ({"call_quote": "Applications opened on an invented date."}, "retry", "call_quote_unsupported"),
+    ({"funding": "none"}, "publish", "verified_individual_opportunity"),
+    ({"uzbekistan": "unclear"}, "publish", "verified_individual_opportunity"),
+    ({"location": "unclear"}, "publish", "verified_individual_opportunity"),
+    ({"funding": "unclear"}, "publish", "verified_individual_opportunity"),
+    ({"scope_quote": "Invented eligibility approval."}, "publish", "verified_individual_opportunity"),
+    ({"funding_quote": "Invented full financial coverage."}, "publish", "verified_individual_opportunity"),
+    ({"call_quote": "Applications opened on an invented date."}, "publish", "verified_individual_opportunity"),
 ])
 def test_independent_publication_dimensions(changes, state, reason):
     candidate, source = fixture(**changes)
@@ -68,21 +70,24 @@ def test_established_university_admission_fee_is_evaluated_separately():
     assert assess(candidate, source).state == "publish"
 
 
-def test_an_unrecognised_paid_programme_is_held_for_issuer_review():
+def test_paid_programme_publishes_with_its_cost_disclosed():
     candidate, source = paid_candidate("https://unknown-university.example/admissions", "degree_scholarship", "university")
-    assert assess(candidate, source).reason == "unestablished_paid_programme"
+    assert assess(candidate, source).state == "publish"
+    assert candidate["screening"]["mandatory_costs"]
 
 
-def test_missing_cost_disclosure_blocks_paid_university_publication():
+def test_stated_fee_is_disclosed_even_when_the_model_omits_it():
     candidate, source = paid_candidate("https://www.ox.ac.uk/funding", "degree_scholarship", "university")
     candidate["screening"]["mandatory_costs"] = []
-    assert assess(candidate, source).reason == "mandatory_cost_not_disclosed"
+    assert assess(candidate, source).state == "publish"
+    assert "to'lov" in candidate["screening"]["mandatory_costs"][0]
 
 
-def test_known_fee_cannot_be_relabelled_as_free_by_the_model():
-    candidate, source = paid_candidate()
-    candidate["screening"]["fee"] = "none"
-    assert assess(candidate, source).reason == "fee_contradiction"
+def test_known_fee_cannot_be_hidden_by_a_free_label():
+    candidate, source = paid_candidate("https://www.ox.ac.uk/funding", "degree_scholarship", "university")
+    candidate["screening"].update(fee="none", mandatory_costs=[])
+    assert assess(candidate, source).state == "publish"
+    assert candidate["screening"]["mandatory_costs"]
 
 
 def test_refundable_nonprofit_deposit_is_not_a_paid_private_application():
@@ -100,9 +105,15 @@ def test_model_confirmation_cannot_override_explicit_official_exclusion(statemen
     assert assess(candidate, source).state == "reject"
 
 
-def test_generic_international_students_does_not_prove_uzbekistan_eligibility():
+def test_international_students_call_is_open_to_uzbekistan():
     candidate, source = fixture(scope_quote="International students may apply.")
-    source["summary"] += " International students may apply."
+    source["summary"] = "International students may apply. Applications are open."
+    assert assess(candidate, source).state == "publish"
+
+
+def test_call_without_any_applicant_scope_is_not_published():
+    candidate, source = fixture(scope_quote="")
+    source["summary"] = "Applications are open. Research costs are covered."
     assert assess(candidate, source).reason == "uzbekistan_scope_not_explicit"
 
 
@@ -113,16 +124,18 @@ def test_plain_individual_profile_on_local_government_call_is_not_lost():
     assert assess(candidate, source).state == "publish"
 
 
-def test_invented_stipend_amount_is_not_accepted_from_a_generic_funding_quote():
+def test_invented_stipend_amount_is_removed_not_blocking():
     candidate, source = fixture()
-    candidate["benefits"] = ["Oyiga $9,000 stipendiya"]
-    assert assess(candidate, source).reason == "financial_amount_unsupported"
+    candidate["benefits"] = ["Oyiga $9,000 stipendiya", "Tadqiqot xarajatlari qoplanadi"]
+    assert assess(candidate, source).state == "publish"
+    assert candidate["benefits"] == ["Tadqiqot xarajatlari qoplanadi"]
 
 
-def test_tuition_discount_is_not_turned_into_a_full_grant():
+def test_tuition_discount_is_not_advertised_as_a_full_grant():
     candidate, source = fixture(funding="discount")
-    candidate["benefits"] = ["To'liq grant"]
-    assert assess(candidate, source).reason == "full_funding_overclaimed"
+    candidate["benefits"] = ["To'liq grant", "O'qish to'lovida chegirma"]
+    assert assess(candidate, source).state == "publish"
+    assert candidate["benefits"] == ["O'qish to'lovida chegirma"]
 
 
 def test_scholarships_rank_ahead_of_conferences_independently_of_copy_length():
@@ -264,10 +277,11 @@ def test_unverified_source_date_cannot_create_an_urgent_reminder(monkeypatch):
     assert main.revalidate_reminders([source]) == []
 
 
-def test_application_fee_cannot_be_hidden_as_refundable_deposit():
-    candidate, source = paid_candidate()
+def test_application_fee_stays_visible_when_labelled_a_deposit():
+    candidate, source = paid_candidate("https://www.ox.ac.uk/funding", "degree_scholarship", "university")
     candidate["screening"]["fee"] = "refundable_deposit"
-    assert assess(candidate, source).reason == "fee_contradiction"
+    assert assess(candidate, source).state == "publish"
+    assert candidate["screening"]["mandatory_costs"]
 
 
 def test_no_processing_fee_does_not_capture_a_stipend_as_payment():
@@ -280,13 +294,12 @@ def test_currency_substitution_is_not_a_supported_amount():
     assert monetary_claims("6000 CHF") != monetary_claims("9000 CHF")
 
 
-def test_upper_bound_award_cannot_be_advertised_as_a_fixed_sum():
+def test_amount_from_the_official_page_is_kept():
     candidate, source = fixture(funding="partial", funding_quote="Awards provide up to $5,000.")
     source["summary"] += " Awards provide up to $5,000."
-    candidate["benefits"] = ["$5,000 miqdorida yordam"]
-    assert assess(candidate, source).reason == "conditional_amount_omitted"
     candidate["benefits"] = ["$5,000 gacha yordam"]
     assert assess(candidate, source).state == "publish"
+    assert candidate["benefits"] == ["$5,000 gacha yordam"]
 
 
 @pytest.mark.parametrize("requirement", [
@@ -319,20 +332,22 @@ def test_full_research_award_ranks_above_a_small_degree_discount():
     assert priority(full) > priority(discount)
 
 
-def test_an_edu_suffix_alone_does_not_approve_a_paid_university():
+def test_paid_unknown_university_is_published_with_costs():
     candidate, source = paid_candidate("https://unknown-college.edu/apply", "degree_scholarship", "university")
-    assert assess(candidate, source).reason == "unestablished_paid_programme"
-
-
-def test_private_event_cannot_hide_its_type_as_a_scholarship():
-    candidate, source = fixture(program="degree_scholarship", organizer="private")
-    source.update(title="Private Leadership Forum 2027", url="https://private-forum.example/apply")
-    assert assess(candidate, source).reason == "event_issuer_needs_review"
-
-
-def test_free_application_claim_needs_its_own_no_fee_evidence():
-    candidate, source = fixture(fee="none", fee_quote="")
-    candidate["summary"] = "Ariza topshirish bepul."
-    assert assess(candidate, source).reason == "free_application_unsupported"
-    candidate["screening"]["fee_quote"] = "No application fee is charged."
     assert assess(candidate, source).state == "publish"
+
+
+def test_paid_private_forum_cannot_hide_its_type_as_a_scholarship():
+    candidate, source = paid_candidate(program="degree_scholarship", organizer="private")
+    source.update(title="Private Leadership Forum 2027")
+    assert assess(candidate, source).reason == "paid_private_forum"
+
+
+def test_free_application_claim_is_removed_without_no_fee_evidence():
+    candidate, source = fixture(fee="none", fee_quote="")
+    source["summary"] = "Applicants of all nationalities may apply. Applications are open."
+    candidate["summary"] = "Tadqiqot dasturi. Ariza topshirish bepul."
+    assert assess(candidate, source).state == "publish"
+    assert candidate["summary"] == "Tadqiqot dasturi."
+
+

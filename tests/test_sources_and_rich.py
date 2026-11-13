@@ -193,9 +193,12 @@ def test_current_models_and_supported_thinking_are_used(monkeypatch):
     assert cfg.temperature is None
 
 
-def test_editor_requires_a_verbatim_eligibility_quote(monkeypatch):
-    configure_ai(monkeypatch, [card(eligibility_evidence="Uzbekistan is explicitly eligible.")])
-    assert ai_agent.generate_post_content([item()]) is None
+def test_editor_scope_comes_from_the_official_page_not_the_model(monkeypatch):
+    source = item(summary="Applications are open. All research costs are covered.")
+    configure_ai(monkeypatch, [card(eligibility_evidence="Uzbekistan is explicitly eligible.",
+                                    screening={**card()["screening"], "scope_quote": "Uzbekistan is explicitly eligible."})])
+    content = ai_agent.generate_post_content([source])
+    assert content is None or content["cards"] == []
 
 
 def test_editor_accepts_supported_eligibility_quote(monkeypatch):

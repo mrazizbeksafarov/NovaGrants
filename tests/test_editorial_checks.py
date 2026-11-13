@@ -43,9 +43,10 @@ def test_stanford_profile_is_filtered_before_card_is_published():
     assert content["cards"] == []
 
 
-def test_gemini_bad_copy_is_not_a_successful_card(monkeypatch):
-    configure_ai(monkeypatch, [card(benefits=["Living stipend $6,000"])])
-    assert ai_agent.generate_post_content([item()]) is None
+def test_unverified_amount_is_dropped_from_gemini_copy(monkeypatch):
+    configure_ai(monkeypatch, [card(benefits=["Living stipend $6,000", "Tadqiqot xarajatlari qoplanadi"])])
+    content = ai_agent.generate_post_content([item()])
+    assert content["cards"][0]["benefits"] == ["Tadqiqot xarajatlari qoplanadi"]
 
 
 def test_gemini_foreign_only_selection_is_an_intentional_exclusion(monkeypatch):
