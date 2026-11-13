@@ -2,6 +2,7 @@ name: Nova Grants Bot
 
 permissions:
   contents: read
+  issues: write   # Gemini inbox issue'larini o'qish, izohlash va yopish
 
 defaults:
   run:
@@ -96,6 +97,9 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           PYTHONIOENCODING: utf-8
           NOVA_WORKFLOW_ALERT: '1'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Faqat shu akkaunt ochgan nova-inbox issue'lari qabul qilinadi (repo ochiq).
+          NOVA_INBOX_AUTHORS: ${{ vars.NOVA_INBOX_AUTHORS || github.repository_owner }}
         run: python main.py 2>&1 | tee bot_run.log
 
       - name: Ishga tushishdan oldingi xatoni bildirish
