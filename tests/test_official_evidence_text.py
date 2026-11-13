@@ -144,3 +144,42 @@ def test_misquoted_evidence_stays_retryable(monkeypatch):
     assert main.publish([g]) == 0
     assert held == []
     assert any("1 ta nomzod" in issue for issue in main.PUBLISH_ISSUES)
+
+
+LISTING = ("Applicants from all countries are eligible to apply. The programme covers travel and "
+           "accommodation for selected participants. Applications are open until 30 December 2026.")
+
+
+def test_bot_blocked_official_page_uses_the_announcement_for_eligibility(monkeypatch):
+    g = {**grant(), "summary": LISTING}
+    monkeypatch.setattr(official_evidence, "_get", lambda url: SimpleNamespace(status_code=403))
+    result = official_evidence.verify_one(g)
+    assert result.status == "ready" and result.grant["url"] == g["url"]
+    assert result.grant["evidence_from_listing"] and "all countries" in result.grant["summary"]
+
+
+def test_short_announcement_cannot_stand_in_for_an_unreadable_page(monkeypatch):
+    monkeypatch.setattr(official_evidence, "_get", lambda url: SimpleNamespace(status_code=403))
+    assert official_evidence.verify_one(grant()).status == "retry"
+
+
+def test_announcement_requiring_foreign_enrolment_is_still_ineligible(monkeypatch):
+    g = {**grant(), "summary": LISTING + " Applicants must be currently enrolled at a university in the United States."}
+    monkeypatch.setattr(official_evidence, "_get", lambda url: None)
+    assert official_evidence.verify_one(g).status == "ineligible"
+
+
+def test_uzbek_language_local_call_needs_no_english_eligibility_words(monkeypatch):
+    g = {**grant(), "url": "https://yoshlar.gov.uz/tanlov-2026"}
+    text = "<p>Respublika yoshlar tanlovi uchun ariza qabul qilinadi. G'oliblar mukofotlanadi.</p>" + "<p>Batafsil.</p>" * 20
+    monkeypatch.setattr(official_evidence, "_get", lambda url: page(text, url))
+    result = official_evidence.verify_one(g)
+    assert result.status == "ready" and "evidence_from_listing" not in result.grant
+
+
+def test_official_page_without_scope_is_combined_with_announcement(monkeypatch):
+    g = {**grant(), "summary": LISTING}
+    monkeypatch.setattr(official_evidence, "_get", lambda url: page("<p>Programme overview and research topics.</p>" * 20, url))
+    result = official_evidence.verify_one(g)
+    assert result.status == "ready"
+    assert "Programme overview" in result.grant["summary"] and "all countries" in result.grant["summary"]
